@@ -26,13 +26,19 @@ const THEME_LABEL: Record<ThemePreference, string> = {
   system: "跟随系统",
 };
 
+// 与服务端首屏一致，避免 hydration 不匹配
+const SSR_THEME_ICON = <DesktopOutlined />;
+const SSR_THEME_LABEL = "跟随系统";
+
 interface ThemeToggleProps {
   className?: string;
 }
 
 export default function ThemeToggle({ className }: ThemeToggleProps) {
-  const { preference, setTheme } = useTheme();
+  const { preference, setTheme, ready } = useTheme();
   const current = THEME_OPTIONS.find((item) => item.key === preference);
+  const icon = ready ? current?.icon : SSR_THEME_ICON;
+  const label = ready ? THEME_LABEL[preference] : SSR_THEME_LABEL;
 
   const menuItems: MenuProps["items"] = THEME_OPTIONS.map((item) => ({
     key: item.key,
@@ -50,19 +56,19 @@ export default function ThemeToggle({ className }: ThemeToggleProps) {
       menu={{
         items: menuItems,
         selectable: true,
-        selectedKeys: [preference],
+        selectedKeys: ready ? [preference] : [],
         onClick: handleMenuClick,
       }}
       trigger={["click"]}
       placement="topRight"
       destroyOnHidden
     >
-      <Tooltip title={`主题：${THEME_LABEL[preference]}`}>
+      <Tooltip title={`主题：${label}`}>
         <Button
           type="text"
           className={`theme-toggle-btn ${className ?? ""}`}
-          icon={current?.icon}
-          aria-label={`当前主题：${THEME_LABEL[preference]}`}
+          icon={icon}
+          aria-label={`当前主题：${label}`}
         />
       </Tooltip>
     </Dropdown>

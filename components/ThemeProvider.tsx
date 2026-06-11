@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -14,7 +15,6 @@ import { ConfigProvider, theme as antdTheme } from "antd";
 import {
   applyThemePreference,
   getInitialTheme,
-  getResolvedFromDocument,
   getSystemTheme,
   resolveTheme,
   type ResolvedTheme,
@@ -25,6 +25,7 @@ interface ThemeContextValue {
   preference: ThemePreference;
   resolvedTheme: ResolvedTheme;
   setTheme: (preference: ThemePreference) => void;
+  ready: boolean;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -37,17 +38,20 @@ export function useTheme() {
   return ctx;
 }
 
+// 与服务端首屏保持一致，避免 hydration 时读取 localStorage
+const SSR_THEME_PREFERENCE: ThemePreference = "system";
+const SSR_SYSTEM_THEME: ResolvedTheme = "light";
+
 export default function ThemeProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [preference, setPreference] = useState<ThemePreference>(() =>
-    typeof window !== "undefined" ? getInitialTheme() : "system"
-  );
-  const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() =>
-    typeof window !== "undefined" ? getSystemTheme() : "light"
-  );
+  const [preference, setPreference] =
+    useState<ThemePreference>(SSR_THEME_PREFERENCE);
+  const [systemTheme, setSystemTheme] =
+    useState<ResolvedTheme>(SSR_SYSTEM_THEME);
+  const [ready, setReady] = useState(false);
   const preferenceRef = useRef(preference);
 
   const resolvedTheme = useMemo(
@@ -59,9 +63,19 @@ export default function ThemeProvider({
     preferenceRef.current = preference;
   }, [preference]);
 
+  // 挂载后同步本地偏好，useLayoutEffect 在绘制前执行，减少图标/antd 闪动
+  useLayoutEffect(() => {
+    const stored = getInitialTheme();
+    const system = getSystemTheme();
+
+    preferenceRef.current = stored;
+    setPreference(stored);
+    setSystemTheme(system);
+    setReady(true);
+  }, []);
+
   const setTheme = useCallback(
     (next: ThemePreference) => {
-      // 先同步改 DOM，再强制同帧更新 React，避免 antd 与页面样式不同步
       applyThemePreference(next, systemTheme);
       flushSync(() => {
         setPreference(next);
@@ -70,19 +84,6 @@ export default function ThemeProvider({
     [systemTheme]
   );
 
-  // 首屏：与内联脚本已设置的 data-theme 对齐，仅同步 antd 算法
-  useEffect(() => {
-    const docResolved = getResolvedFromDocument();
-    const computed = resolveTheme(preference, systemTheme);
-    if (docResolved !== computed) {
-      applyThemePreference(preference, systemTheme, {
-        persist: false,
-        disableTransition: true,
-      });
-    }
-  }, []);
-
-  // 跟随系统时，系统主题变化需立即同步 DOM
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const handleChange = (event: MediaQueryListEvent) => {
@@ -104,7 +105,9 @@ export default function ThemeProvider({
   }, []);
 
   return (
-    <ThemeContext.Provider value={{ preference, resolvedTheme, setTheme }}>
+    <ThemeContext.Provider
+      value={{ preference, resolvedTheme, setTheme, ready }}
+    >
       <ConfigProvider
         theme={{
           cssVar: true,
