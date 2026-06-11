@@ -5,30 +5,33 @@ import { useRouter } from "next/navigation";
 import { getRefreshToken, getToken, isAccessTokenExpired } from "@/utils/auth";
 import { refreshAccessToken } from "@/services/tokenRefresh";
 
-export default function HomePage() {
+// 页面级鉴权：无有效登录态时跳转登录，有 refreshToken 则尝试静默续期
+export function useAuth() {
   const router = useRouter();
 
   useEffect(() => {
-    async function redirect() {
+    async function ensureAuth() {
       const token = getToken();
       const refreshToken = getRefreshToken();
 
-      if (token && !isAccessTokenExpired()) {
-        router.replace("/dashboard");
+      if (!token && !refreshToken) {
+        router.replace("/login");
         return;
       }
 
-      if (refreshToken) {
+      if ((!token || isAccessTokenExpired()) && refreshToken) {
         const newToken = await refreshAccessToken();
-        router.replace(newToken ? "/dashboard" : "/login");
+        if (!newToken) {
+          router.replace("/login");
+        }
         return;
       }
 
-      router.replace("/login");
+      if (!token) {
+        router.replace("/login");
+      }
     }
 
-    redirect();
+    ensureAuth();
   }, [router]);
-
-  return null;
 }
