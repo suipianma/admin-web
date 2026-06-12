@@ -40,9 +40,24 @@ export function deleteConversation(id: number) {
   return request.delete(`/conversations/${id}`);
 }
 
-/** 获取会话历史消息 */
-export function getConversationMessages(conversationId: number) {
-  return request.get<ConversationMessage[]>(
-    `/conversations/${conversationId}/messages`
+export interface MessagesPageResult {
+  items: ConversationMessage[];
+  hasMore: boolean;
+  total: number;
+}
+
+export interface GetMessagesParams {
+  limit?: number;
+  beforeId?: number;
+}
+
+/** 分页获取会话历史消息 */
+export function getConversationMessages(
+  conversationId: number,
+  params?: GetMessagesParams
+) {
+  return request.get<MessagesPageResult>(
+    `/conversations/${conversationId}/messages`,
+    { params }
   );
 }

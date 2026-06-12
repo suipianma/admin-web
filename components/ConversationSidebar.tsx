@@ -14,6 +14,7 @@ import type { MenuProps } from "antd";
 import {
   DeleteOutlined,
   EditOutlined,
+  MessageOutlined,
   MoreOutlined,
   PlusOutlined,
 } from "@ant-design/icons";
@@ -97,8 +98,13 @@ export default function ConversationSidebar({
     <>
       <div className="conv-sidebar">
         <div className="conv-sidebar-header">
+          <div className="conv-sidebar-brand">
+            <MessageOutlined />
+            <span>对话</span>
+          </div>
           <Button
             type="primary"
+            className="conv-new-btn"
             icon={<PlusOutlined />}
             block
             disabled={disabled}
@@ -133,6 +139,9 @@ export default function ConversationSidebar({
                     }
                   }}
                 >
+                  <span className="conv-item-icon">
+                    <MessageOutlined />
+                  </span>
                   <span className="conv-item-title" title={conv.title}>
                     {conv.title}
                   </span>
