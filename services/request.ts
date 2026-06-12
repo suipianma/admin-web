@@ -1,5 +1,15 @@
 import axios, { type InternalAxiosRequestConfig } from "axios";
-import { getToken, isAccessTokenExpired } from "@/utils/auth";
+import {
+  API_BASE,
+  DEFAULT_TIMEOUT_MS,
+  USER_ID_HEADER,
+} from "@/config/api";
+import { getToken, getUserInfo, isAccessTokenExpired } from "@/utils/auth";
+import {
+  ApiError,
+  createApiErrorFromBody,
+  createTimeoutError,
+} from "@/utils/apiError";
 import { handleAuthFailure, refreshAccessToken } from "@/services/tokenRefresh";
 
 interface RetryConfig extends InternalAxiosRequestConfig {
@@ -7,18 +17,26 @@ interface RetryConfig extends InternalAxiosRequestConfig {
 }
 
 const request = axios.create({
-  baseURL: "http://localhost:3000",
-  timeout: 10000,
+  baseURL: API_BASE,
+  timeout: DEFAULT_TIMEOUT_MS,
 });
 
 function isAuthEndpoint(url?: string) {
   if (!url) return false;
-  return url.includes("/auth/login") || url.includes("/auth/refresh") || url.includes("/auth/register");
+  return (
+    url.includes("/auth/login") ||
+    url.includes("/auth/refresh") ||
+    url.includes("/auth/register")
+  );
 }
 
-// 请求前：accessToken 快过期时静默刷新
+function getCurrentUserId(): number | null {
+  return getUserInfo()?.userId ?? null;
+}
+
 request.interceptors.request.use(async (config) => {
   let token = getToken();
+  const userId = getCurrentUserId();
 
   if (token && isAccessTokenExpired() && !isAuthEndpoint(config.url)) {
     const newToken = await refreshAccessToken();
@@ -28,10 +46,14 @@ request.interceptors.request.use(async (config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
+  if (userId) {
+    config.headers[USER_ID_HEADER] = String(userId);
+  }
+
   return config;
 });
 
-// 响应拦截：解包后端统一格式 { data, message, code }
 request.interceptors.response.use(
   (response) => {
     const body = response.data;
@@ -42,12 +64,23 @@ request.interceptors.response.use(
   },
   async (error) => {
     const status = error.response?.status;
-    const message =
-      error.response?.data?.message || error.message || "请求失败";
     const config = error.config as RetryConfig | undefined;
+    if (error.code === "ECONNABORTED") {
+      return Promise.reject(createTimeoutError());
+    }
 
-    // 401：尝试 refresh 后重试原请求，refresh 失败再跳登录
-    if (status === 401 && config && !config._retry && !isAuthEndpoint(config.url)) {
+    const apiError = createApiErrorFromBody(
+      error.response?.data,
+      error.message || "请求失败",
+      status
+    );
+
+    if (
+      status === 401 &&
+      config &&
+      !config._retry &&
+      !isAuthEndpoint(config.url)
+    ) {
       config._retry = true;
       const newToken = await refreshAccessToken();
 
@@ -57,15 +90,16 @@ request.interceptors.response.use(
       }
 
       handleAuthFailure();
-      return Promise.reject(new Error(message));
+      return Promise.reject(apiError);
     }
 
     if (status === 401) {
       handleAuthFailure();
     }
 
-    return Promise.reject(new Error(message));
+    return Promise.reject(apiError);
   }
 );
 
 export default request;
+export { ApiError };
