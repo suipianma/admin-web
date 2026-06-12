@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 import { flushSync } from "react-dom";
-import { ConfigProvider, theme as antdTheme } from "antd";
+import { App, ConfigProvider, theme as antdTheme } from "antd";
 import {
   applyThemePreference,
   getInitialTheme,
@@ -121,7 +121,7 @@ export default function ThemeProvider({
           },
         }}
       >
-        {children}
+        <App>{children}</App>
       </ConfigProvider>
     </ThemeContext.Provider>
   );

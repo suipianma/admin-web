@@ -2,7 +2,7 @@ import {
   AI_STREAM_TIMEOUT_MS,
   API_BASE,
 } from "@/config/api";
-import { getUserInfo } from "@/utils/auth";
+import { getToken } from "@/utils/auth";
 import { ApiError } from "@/utils/apiError";
 import { playCacheTypewriter } from "@/utils/cacheTypewriter";
 
@@ -52,18 +52,20 @@ function normalizeReply(raw: {
   };
 }
 
-// Nest SSE：GET /ai/stream?prompt=xxx&userId=xxx
+// Nest SSE：GET /conversations/:id/stream?content=xxx&token=JWT
 export function streamChat(
-  prompt: string,
+  conversationId: number,
+  content: string,
   { onUpdate, onDone, onError }: StreamChatOptions
 ): () => void {
-  const userId = getUserInfo()?.userId;
-  const params = new URLSearchParams({ prompt });
-  if (userId) {
-    params.set("userId", String(userId));
+  const token = getToken();
+  const params = new URLSearchParams({ content });
+  // EventSource 无法带 Authorization header，token 放 query
+  if (token) {
+    params.set("token", token);
   }
 
-  const url = `${API_BASE}/ai/stream?${params.toString()}`;
+  const url = `${API_BASE}/conversations/${conversationId}/stream?${params.toString()}`;
   const es = new EventSource(url);
   let finished = false;
   let cancelTypewriter: (() => void) | null = null;
