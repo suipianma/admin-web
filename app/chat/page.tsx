@@ -10,10 +10,9 @@ import {
   SendOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
-import type { VirtuosoHandle } from "react-virtuoso";
 import ConversationSidebar from "@/components/ConversationSidebar";
 import ChatFullscreenButton from "@/components/chat/ChatFullscreenButton";
-import ChatMessageList from "@/components/chat/ChatMessageList";
+import ChatMessageArea from "@/components/chat/ChatMessageArea";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserInfo } from "@/hooks/useUserInfo";
 import { useChatMessages } from "@/hooks/useChatMessages";
@@ -56,7 +55,6 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stopStreamRef = useRef<(() => void) | null>(null);
   const initDoneRef = useRef(false);
@@ -423,14 +421,13 @@ export default function ChatPage() {
                   </div>
                 </div>
               ) : (
-                <ChatMessageList
+                <ChatMessageArea
                   messages={messages}
                   firstItemIndex={firstItemIndex}
                   streaming={streaming}
                   loadingMore={loadingMore}
                   hasMore={hasMore}
                   userAvatarText={userAvatarText}
-                  virtuosoRef={virtuosoRef}
                   onLoadOlder={() => {
                     if (activeConversationId) {
                       void loadOlder(activeConversationId);

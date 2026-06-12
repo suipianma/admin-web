@@ -14,6 +14,8 @@ interface ChatMessageListProps {
   userAvatarText: string;
   onLoadOlder: () => void;
   virtuosoRef?: React.RefObject<VirtuosoHandle | null>;
+  onRangeChanged?: (range: { startIndex: number; endIndex: number }) => void;
+  onAtBottomChange?: (isAtBottom: boolean) => void;
 }
 
 export default function ChatMessageList({
@@ -25,6 +27,8 @@ export default function ChatMessageList({
   userAvatarText,
   onLoadOlder,
   virtuosoRef,
+  onRangeChanged,
+  onAtBottomChange,
 }: ChatMessageListProps) {
   const internalRef = useRef<VirtuosoHandle>(null);
   const listRef = virtuosoRef ?? internalRef;
@@ -104,8 +108,12 @@ export default function ChatMessageList({
           if (streaming && !userScrolledUpRef.current) return "auto";
           return isAtBottom ? "smooth" : false;
         }}
+        rangeChanged={(range) => {
+          onRangeChanged?.(range);
+        }}
         atBottomStateChange={(isAtBottom) => {
           atBottomRef.current = isAtBottom;
+          onAtBottomChange?.(isAtBottom);
           if (streaming && !isAtBottom) {
             userScrolledUpRef.current = true;
           }
