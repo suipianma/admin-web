@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import type { VirtuosoHandle } from "react-virtuoso";
-import ChatMessageList from "./ChatMessageList";
-import ChatMessageNavigator, {
-  resolveActiveNavId,
-} from "./ChatMessageNavigator";
+import ChatMessageList, {
+  type ChatMessageScrollApi,
+} from "./ChatMessageList";
+import ChatMessageNavigator from "./ChatMessageNavigator";
 import type { ChatMessage } from "./ChatMessageItem";
 
 interface ChatMessageAreaProps {
@@ -27,31 +26,26 @@ export default function ChatMessageArea({
   userAvatarText,
   onLoadOlder,
 }: ChatMessageAreaProps) {
-  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const scrollApiRef = useRef<ChatMessageScrollApi | null>(null);
   const [activeNavId, setActiveNavId] = useState<number | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
 
-  const handleRangeChanged = useCallback(
-    (range: { startIndex: number; endIndex: number }) => {
-      setActiveNavId(
-        resolveActiveNavId(messages, range.startIndex, firstItemIndex)
-      );
-    },
-    [messages, firstItemIndex]
-  );
+  const handleActiveNavChange = useCallback((messageId: number | null) => {
+    setActiveNavId(messageId);
+  }, []);
 
   const handleAtBottomChange = useCallback((isAtBottom: boolean) => {
     setShowScrollBottom(!isAtBottom);
   }, []);
 
+  const handleScrollToMessage = useCallback((messageId: number) => {
+    setActiveNavId(messageId);
+    scrollApiRef.current?.scrollToMessageId(messageId);
+  }, []);
+
   const handleScrollToBottom = useCallback(() => {
-    if (messages.length === 0) return;
-    virtuosoRef.current?.scrollToIndex({
-      index: firstItemIndex + messages.length - 1,
-      align: "end",
-      behavior: "smooth",
-    });
-  }, [messages.length, firstItemIndex]);
+    scrollApiRef.current?.scrollToBottom();
+  }, []);
 
   return (
     <div className="chat-body-with-nav">
@@ -63,9 +57,9 @@ export default function ChatMessageArea({
         loadingMore={loadingMore}
         hasMore={hasMore}
         userAvatarText={userAvatarText}
-        virtuosoRef={virtuosoRef}
+        scrollApiRef={scrollApiRef}
         onLoadOlder={onLoadOlder}
-        onRangeChanged={handleRangeChanged}
+        onActiveNavChange={handleActiveNavChange}
         onAtBottomChange={handleAtBottomChange}
       />
       </div>
@@ -73,7 +67,7 @@ export default function ChatMessageArea({
         messages={messages}
         firstItemIndex={firstItemIndex}
         activeMessageId={activeNavId}
-        virtuosoRef={virtuosoRef}
+        onScrollToMessage={handleScrollToMessage}
         showScrollBottom={showScrollBottom}
         onScrollToBottom={handleScrollToBottom}
       />

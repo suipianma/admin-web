@@ -6,7 +6,6 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from "@ant-design/icons";
-import type { VirtuosoHandle } from "react-virtuoso";
 import type { ChatMessage } from "./ChatMessageItem";
 
 export interface ChatNavItem {
@@ -19,7 +18,7 @@ interface ChatMessageNavigatorProps {
   messages: ChatMessage[];
   firstItemIndex: number;
   activeMessageId: number | null;
-  virtuosoRef: React.RefObject<VirtuosoHandle | null>;
+  onScrollToMessage: (messageId: number) => void;
   showScrollBottom: boolean;
   onScrollToBottom: () => void;
 }
@@ -45,28 +44,39 @@ export function buildChatNavItems(
     }));
 }
 
-/** 根据可见区间推算当前激活的用户消息 */
-export function resolveActiveNavId(
+/** 根据视口内消息 DOM 位置推算当前激活的用户消息（比 rangeChanged 更准确） */
+export function resolveActiveNavIdFromViewport(
+  scroller: HTMLElement | null,
   messages: ChatMessage[],
-  startIndex: number,
-  firstItemIndex: number
+  topOffset: number
 ): number | null {
-  const startArrayIndex = startIndex - firstItemIndex;
-  if (startArrayIndex < 0) return null;
+  if (!scroller) return null;
 
-  for (let i = Math.min(startArrayIndex, messages.length - 1); i >= 0; i--) {
-    if (messages[i].role === "user") {
-      return messages[i].id;
+  const anchorY = scroller.getBoundingClientRect().top + topOffset;
+  let activeId: number | null = null;
+
+  for (const msg of messages) {
+    if (msg.role !== "user") continue;
+
+    const el = scroller.querySelector(
+      `[data-message-id="${msg.id}"]`
+    ) as HTMLElement | null;
+    if (!el) continue;
+
+    // 取「已滚过顶部锚线」的最后一条用户消息 = 当前阅读位置
+    if (el.getBoundingClientRect().top <= anchorY + 32) {
+      activeId = msg.id;
     }
   }
-  return null;
+
+  return activeId;
 }
 
 export default function ChatMessageNavigator({
   messages,
   firstItemIndex,
   activeMessageId,
-  virtuosoRef,
+  onScrollToMessage,
   showScrollBottom,
   onScrollToBottom,
 }: ChatMessageNavigatorProps) {
@@ -87,11 +97,7 @@ export default function ChatMessageNavigator({
   if (navItems.length < 2) return null;
 
   function scrollToItem(item: ChatNavItem) {
-    virtuosoRef.current?.scrollToIndex({
-      index: item.index,
-      align: "start",
-      behavior: "smooth",
-    });
+    onScrollToMessage(item.id);
   }
 
   return (

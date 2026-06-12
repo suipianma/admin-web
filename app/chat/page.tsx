@@ -26,6 +26,11 @@ import {
   type Conversation,
 } from "@/services/conversation";
 import { ApiError } from "@/utils/apiError";
+import { getUserInfo } from "@/utils/auth";
+import {
+  resolveInitialConversationId,
+  setLastConversationId,
+} from "@/utils/chatStorage";
 
 const SUGGESTIONS = [
   { text: "你好，介绍一下自己", icon: <MessageOutlined /> },
@@ -103,9 +108,12 @@ export default function ChatPage() {
         setConversations(list);
 
         if (list.length > 0) {
-          const firstId = list[0].id;
-          setActiveConversationId(firstId);
-          await loadInitial(firstId);
+          const userId = getUserInfo()?.userId ?? null;
+          const initialId = resolveInitialConversationId(list, userId);
+          if (initialId != null) {
+            setActiveConversationId(initialId);
+            await loadInitial(initialId);
+          }
         } else {
           const created = await createConversation();
           setConversations([created.data]);
@@ -127,6 +135,15 @@ export default function ChatPage() {
   useEffect(() => {
     return () => stopStreamRef.current?.();
   }, []);
+
+  // 切换会话时记录上次查看
+  useEffect(() => {
+    if (activeConversationId == null) return;
+    const userId = getUserInfo()?.userId;
+    if (userId != null) {
+      setLastConversationId(userId, activeConversationId);
+    }
+  }, [activeConversationId]);
 
   // 全屏模式：锁定页面滚动，Esc 退出
   useEffect(() => {
@@ -422,6 +439,7 @@ export default function ChatPage() {
                 </div>
               ) : (
                 <ChatMessageArea
+                  key={activeConversationId ?? "none"}
                   messages={messages}
                   firstItemIndex={firstItemIndex}
                   streaming={streaming}

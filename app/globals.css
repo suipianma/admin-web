@@ -1288,12 +1288,12 @@ body {
 .chat-virtuoso-item {
   max-width: 800px;
   margin: 0 auto;
-  padding: 4px 16px;
+  padding: 4px 16px 24px;
 }
 
 @media (min-width: 768px) {
   .chat-virtuoso-item {
-    padding: 6px 24px;
+    padding: 6px 24px 24px;
   }
 }
 
@@ -1461,7 +1461,8 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  margin-bottom: 24px;
+  /* Virtuoso 无法正确测量 margin，间距改由外层 padding 承担 */
+  margin-bottom: 0;
 }
 
 .chat-row-user {
