@@ -1,12 +1,23 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { Col, Row, Tag } from "antd";
+import { Col, Row, Spin, Tag } from "antd";
 import PageHeader from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserInfo } from "@/hooks/useUserInfo";
 import { filterNavByRole } from "@/config/nav";
+import { getTokenUsageStats, type TokenUsageStats } from "@/services/stats";
+
+const TokenUsageChart = dynamic(() => import("@/components/TokenUsageChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="token-chart-empty">
+      <Spin />
+    </div>
+  ),
+});
 
 const QUICK_LINK_DESC: Record<string, string> = {
   "/users": "管理系统用户账号",
@@ -25,13 +36,39 @@ function getRoleTag(role?: string) {
   return <Tag color="blue">普通用户</Tag>;
 }
 
+/** 千分位格式化 token 数量 */
+function formatTokenCount(value: number) {
+  return value.toLocaleString("zh-CN");
+}
+
 export default function DashboardPage() {
   useAuth();
   const userInfo = useUserInfo();
   const [greeting, setGreeting] = useState("你好");
+  const [tokenStats, setTokenStats] = useState<TokenUsageStats | null>(null);
+  const [tokenLoading, setTokenLoading] = useState(true);
 
   useEffect(() => {
     setGreeting(getGreeting());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getTokenUsageStats()
+      .then((res) => {
+        if (!cancelled) setTokenStats(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) setTokenStats(null);
+      })
+      .finally(() => {
+        if (!cancelled) setTokenLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const quickLinks = filterNavByRole(userInfo).filter(
@@ -68,6 +105,58 @@ export default function DashboardPage() {
           </div>
         </Col>
       </Row>
+
+      <h2 className="section-title">Token 消耗</h2>
+
+      <Spin spinning={tokenLoading}>
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} lg={6}>
+            <div className="stat-card">
+              <div className="stat-label">累计消耗</div>
+              <div className="stat-value">
+                {formatTokenCount(tokenStats?.totalTokens ?? 0)}
+              </div>
+              <div className="stat-desc">
+                输入 {formatTokenCount(tokenStats?.promptTokens ?? 0)} / 输出{" "}
+                {formatTokenCount(tokenStats?.completionTokens ?? 0)}
+              </div>
+            </div>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <div className="stat-card">
+              <div className="stat-label">今日消耗</div>
+              <div className="stat-value">
+                {formatTokenCount(tokenStats?.todayTokens ?? 0)}
+              </div>
+              <div className="stat-desc">按服务器当日 0 点起算</div>
+            </div>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <div className="stat-card">
+              <div className="stat-label">AI 回复次数</div>
+              <div className="stat-value">{tokenStats?.aiReplyCount ?? 0}</div>
+              <div className="stat-desc">
+                缓存命中 {tokenStats?.cachedReplyCount ?? 0} 次
+              </div>
+            </div>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <div className="stat-card">
+              <div className="stat-label">会话数</div>
+              <div className="stat-value">
+                {tokenStats?.conversationCount ?? 0}
+              </div>
+              <div className="stat-desc">
+                {tokenStats?.hasEstimated
+                  ? "部分历史消息为估算值"
+                  : "数据来自 Ollama 统计"}
+              </div>
+            </div>
+          </Col>
+        </Row>
+
+        <TokenUsageChart data={tokenStats?.dailyTrend ?? []} />
+      </Spin>
 
       <h2 className="section-title">快捷入口</h2>
 

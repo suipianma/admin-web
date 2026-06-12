@@ -205,6 +205,81 @@ body {
   color: var(--color-text-secondary);
 }
 
+/* Token 趋势折线图 */
+.token-chart-card {
+  margin-top: 16px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+}
+
+.token-chart-card--empty .token-chart-empty {
+  min-height: 220px;
+}
+
+.token-chart-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.token-chart-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.4;
+}
+
+.token-chart-subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.token-chart-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding-top: 2px;
+}
+
+.token-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.token-chart-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.token-chart-plot {
+  background: var(--color-bg-muted);
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--radius-md) - 2px);
+  padding: 8px 4px 0;
+  overflow: hidden;
+}
+
+.token-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+}
+
 /* 快捷入口 */
 .quick-link-card {
   display: flex;
