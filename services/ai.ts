@@ -16,6 +16,7 @@ export interface StreamChatOptions {
   onUpdate: (reply: ChatReplyResult) => void;
   onDone: () => void;
   onError: (error: Error) => void;
+  promptId?: string;
 }
 
 function cleanText(text: string): string {
@@ -56,10 +57,13 @@ function normalizeReply(raw: {
 export function streamChat(
   conversationId: number,
   content: string,
-  { onUpdate, onDone, onError }: StreamChatOptions
+  { onUpdate, onDone, onError, promptId }: StreamChatOptions
 ): () => void {
   const token = getToken();
   const params = new URLSearchParams({ content });
+  if (promptId) {
+    params.set("promptId", promptId);
+  }
   // EventSource 无法带 Authorization header，token 放 query
   if (token) {
     params.set("token", token);

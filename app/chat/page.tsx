@@ -13,11 +13,18 @@ import {
 import ConversationSidebar from "@/components/ConversationSidebar";
 import ChatFullscreenButton from "@/components/chat/ChatFullscreenButton";
 import ChatMessageArea from "@/components/chat/ChatMessageArea";
+import {
+  PromptTemplateChip,
+  PromptTemplateMenu,
+  PromptTemplatePicker,
+  toggleTemplate,
+} from "@/components/chat/PromptTemplatePicker";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserInfo } from "@/hooks/useUserInfo";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useStreamBuffer } from "@/hooks/useStreamBuffer";
 import { streamChat } from "@/services/ai";
+import { getPromptTemplates, type PromptTemplateItem } from "@/services/prompt";
 import {
   createConversation,
   deleteConversation,
@@ -59,6 +66,11 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplateItem[]>(
+    []
+  );
+  const [selectedPrompt, setSelectedPrompt] =
+    useState<PromptTemplateItem | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stopStreamRef = useRef<(() => void) | null>(null);
@@ -133,8 +145,21 @@ export default function ChatPage() {
   }, [loadInitial, message, resetMessages]);
 
   useEffect(() => {
+    getPromptTemplates()
+      .then((res) => setPromptTemplates(res.data))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     return () => stopStreamRef.current?.();
   }, []);
+
+  // 选中模板后聚焦输入框
+  useEffect(() => {
+    if (selectedPrompt && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [selectedPrompt]);
 
   // 切换会话时记录上次查看
   useEffect(() => {
@@ -191,6 +216,7 @@ export default function ChatPage() {
     if (streaming || id === activeConversationId) return;
     setActiveConversationId(id);
     setInput("");
+    setSelectedPrompt(null);
     setDrawerOpen(false);
     await loadInitial(id);
   }
@@ -203,6 +229,7 @@ export default function ChatPage() {
       setActiveConversationId(res.data.id);
       resetMessages();
       setInput("");
+      setSelectedPrompt(null);
       setDrawerOpen(false);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "新建会话失败");
@@ -247,15 +274,15 @@ export default function ChatPage() {
     }
   }
 
-  function handleSend(text?: string) {
-    const content = (text ?? input).trim();
-    if (!content || streaming || activeConversationId == null) return;
+  function handlePromptSelect(item: PromptTemplateItem) {
+    setSelectedPrompt((prev) => toggleTemplate(prev, item));
+  }
 
-    if (total >= 200) {
-      message.warning(LIMIT_ERROR_MSG);
-      return;
-    }
-
+  function doSend(
+    content: string,
+    conversationId: number,
+    promptId?: string
+  ) {
     setInput("");
     if (inputRef.current) inputRef.current.style.height = "auto";
 
@@ -267,7 +294,8 @@ export default function ChatPage() {
 
     stopStreamRef.current?.();
 
-    stopStreamRef.current = streamChat(activeConversationId, content, {
+    stopStreamRef.current = streamChat(conversationId, content, {
+      promptId,
       onUpdate: (reply) => pushStream(reply),
       onDone: () => {
         flushNow();
@@ -275,11 +303,9 @@ export default function ChatPage() {
         stopStreamRef.current = null;
         assistantIdRef.current = null;
 
-        if (activeConversationId) {
-          void syncFromServer(activeConversationId).then(() => {
-            void refreshConversations(activeConversationId);
-          });
-        }
+        void syncFromServer(conversationId).then(() => {
+          void refreshConversations(conversationId);
+        });
       },
       onError: (err) => {
         cancelStream();
@@ -299,6 +325,19 @@ export default function ChatPage() {
         }
       },
     });
+  }
+
+  async function handleSend(text?: string) {
+    const content = (text ?? input).trim();
+    if (!content || streaming || activeConversationId == null) return;
+
+    if (total >= 200) {
+      message.warning(LIMIT_ERROR_MSG);
+      return;
+    }
+
+    // 选中模板则本次发送带 promptId，未选中则普通对话
+    await doSend(content, activeConversationId, selectedPrompt?.id);
   }
 
   function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -421,20 +460,34 @@ export default function ChatPage() {
                         解答技术问题、梳理架构思路、生成可运行代码
                       </p>
                     </div>
-                    <div className="chat-welcome-list">
-                      {SUGGESTIONS.map((item) => (
-                        <button
-                          key={item.text}
-                          type="button"
-                          className="chat-suggestion-btn"
-                          disabled={streaming || activeConversationId == null}
-                          onClick={() => handleSend(item.text)}
-                        >
-                          <span className="chat-suggestion-icon">{item.icon}</span>
-                          <span className="chat-suggestion-text">{item.text}</span>
-                        </button>
-                      ))}
+                    <div className="chat-welcome-section">
+                      <p className="chat-welcome-section-label">快捷对话</p>
+                      <div className="chat-welcome-list">
+                        {SUGGESTIONS.map((item) => (
+                          <button
+                            key={item.text}
+                            type="button"
+                            className="chat-suggestion-btn"
+                            disabled={streaming || activeConversationId == null}
+                            onClick={() => handleSend(item.text)}
+                          >
+                            <span className="chat-suggestion-icon">
+                              {item.icon}
+                            </span>
+                            <span className="chat-suggestion-text">
+                              {item.text}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
+                    <PromptTemplatePicker
+                      templates={promptTemplates}
+                      selected={selectedPrompt}
+                      disabled={streaming || activeConversationId == null}
+                      onSelect={handlePromptSelect}
+                      onClear={() => setSelectedPrompt(null)}
+                    />
                   </div>
                 </div>
               ) : (
@@ -457,7 +510,18 @@ export default function ChatPage() {
 
             <div className="chat-footer">
               <div className="chat-composer-wrap">
+                <PromptTemplateChip
+                  selected={selectedPrompt}
+                  disabled={streaming || activeConversationId == null}
+                  onClear={() => setSelectedPrompt(null)}
+                />
                 <div className="chat-composer">
+                  <PromptTemplateMenu
+                    templates={promptTemplates}
+                    selected={selectedPrompt}
+                    disabled={streaming || activeConversationId == null}
+                    onSelect={handlePromptSelect}
+                  />
                   <textarea
                     ref={inputRef}
                     className="chat-composer-input"
@@ -466,7 +530,9 @@ export default function ChatPage() {
                     placeholder={
                       streaming
                         ? "AI 正在回复，请稍候..."
-                        : "输入消息，Enter 发送，Shift + Enter 换行"
+                        : selectedPrompt
+                          ? `已启用「${selectedPrompt.name}」，填写${selectedPrompt.contextLabel}`
+                          : "输入消息，Enter 发送，Shift + Enter 换行"
                     }
                     disabled={streaming || activeConversationId == null}
                     onChange={handleInput}
