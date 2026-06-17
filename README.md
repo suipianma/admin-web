@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# admin-web
 
-## Getting Started
+Next.js 前端。
 
-First, run the development server:
+- 后端仓库：https://github.com/suipianma/study-nest-js  
+- 完整配置见后端仓库 **[SETUP.md](https://github.com/suipianma/study-nest-js/blob/main/SETUP.md)**
 
-```bash
+## 本地开发（与 study-nest-js 同级目录）
+
+```powershell
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+访问 http://localhost:3001（API 默认 http://localhost:3000，见 `.env.development`）
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## CI/CD
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+push `main` 会触发两个 Workflow（与后端 `study-nest-js` 结构一致）：
 
-## Learn More
+| Workflow | 作用 |
+|----------|------|
+| **Next.js CI** | `npm ci` → build |
+| **Build And Push Docker Image** | 构建并推送 `suipianma/admin-web:latest` |
 
-To learn more about Next.js, take a look at the following resources:
+需在 **admin-web 仓库** Settings 配置：
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Secrets: `DOCKER_USERNAME`, `DOCKER_PASSWORD`（与后端相同）
+- Variables: `PUBLIC_API_BASE=http://localhost:3000`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+推送后可在 GitHub → Actions 查看运行结果；Docker 部署见后端仓库 `deploy/README.md`。
 
-## Deploy on Vercel
+## 远程
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```powershell
+git remote add origin https://github.com/suipianma/admin-web.git
+git push -u origin main
+```

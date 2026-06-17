@@ -138,10 +138,19 @@ export function streamChat(
 
   es.onerror = () => {
     window.clearTimeout(timeoutTimer);
+    if (finished) return;
+
+    // CONNECTING 表示连不上（401/CORS/API 地址错）；CLOSED 表示流中途断开
+    const wasConnecting = es.readyState === EventSource.CONNECTING;
     es.close();
-    if (!finished) {
-      onError(new ApiError("SSE 连接中断"));
-    }
+
+    onError(
+      new ApiError(
+        wasConnecting
+          ? "无法建立 SSE 连接，请检查是否已登录、API 地址与 CORS 配置"
+          : "SSE 连接中断，请确认 Ollama 已启动且 OLLAMA_URL 配置正确"
+      )
+    );
   };
 
   return () => {

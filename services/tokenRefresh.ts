@@ -1,7 +1,6 @@
 import axios from "axios";
+import { API_BASE } from "@/config/api";
 import { clearAuth, getRefreshToken, setToken } from "@/utils/auth";
-
-const BASE_URL = "http://localhost:3000";
 
 let isRefreshing = false;
 let pendingQueue: Array<{
@@ -33,7 +32,7 @@ export async function refreshAccessToken(): Promise<string | null> {
 
   isRefreshing = true;
   try {
-    const res = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
+    const res = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken });
     const body = res.data;
     const data = body && typeof body === "object" && "data" in body ? body.data : body;
     const accessToken = data?.accessToken as string | undefined;

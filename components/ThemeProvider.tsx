@@ -110,7 +110,7 @@ export default function ThemeProvider({
     >
       <ConfigProvider
         theme={{
-          cssVar: true,
+          cssVar: {},
           algorithm:
             resolvedTheme === "dark"
               ? antdTheme.darkAlgorithm

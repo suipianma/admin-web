@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  App,
   Button,
   Form,
   Input,
@@ -10,7 +11,6 @@ import {
   Result,
   Space,
   Table,
-  message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import PageHeader from "@/components/PageHeader";
@@ -53,6 +53,7 @@ export default function UsersPage() {
 }
 
 function UsersContent() {
+  const { message } = App.useApp();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
