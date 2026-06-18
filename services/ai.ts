@@ -72,7 +72,19 @@ export function streamChat(
   const url = `${API_BASE}/conversations/${conversationId}/stream?${params.toString()}`;
   const es = new EventSource(url);
   let finished = false;
+  let completed = false;
   let cancelTypewriter: (() => void) | null = null;
+  let accThinking = "";
+  let accResponse = "";
+
+  const finishStream = () => {
+    if (completed) return;
+    completed = true;
+    finished = true;
+    window.clearTimeout(timeoutTimer);
+    es.close();
+    onDone();
+  };
 
   const timeoutTimer = window.setTimeout(() => {
     if (!finished) {
@@ -92,13 +104,19 @@ export function streamChat(
       let parsed = JSON.parse(event.data) as {
         thinking?: string;
         response?: string;
+        thinkingDelta?: string;
+        contentDelta?: string;
         error?: string;
         done?: boolean;
+        fromCache?: boolean;
         data?: {
           thinking?: string;
           response?: string;
+          thinkingDelta?: string;
+          contentDelta?: string;
           error?: string;
           done?: boolean;
+          fromCache?: boolean;
         };
       };
 
@@ -114,10 +132,20 @@ export function streamChat(
         return;
       }
 
-      const reply = normalizeReply(parsed);
+      if (parsed.thinkingDelta) accThinking += parsed.thinkingDelta;
+      if (parsed.contentDelta) accResponse += parsed.contentDelta;
+      if (parsed.thinking !== undefined) accThinking = parsed.thinking;
+      if (parsed.response !== undefined) accResponse = parsed.response;
+
+      const reply = normalizeReply({
+        thinking: accThinking,
+        response: accResponse,
+        fromCache: parsed.fromCache,
+      });
 
       if (parsed.done && reply.fromCache) {
         finished = true;
+        completed = true;
         window.clearTimeout(timeoutTimer);
         es.close();
         cancelTypewriter = playCacheTypewriter(reply, { onUpdate, onDone });
@@ -127,10 +155,7 @@ export function streamChat(
       onUpdate(reply);
 
       if (parsed.done) {
-        finished = true;
-        window.clearTimeout(timeoutTimer);
-        es.close();
-        onDone();
+        finishStream();
       }
     } catch {
       onUpdate({
@@ -142,23 +167,36 @@ export function streamChat(
 
   es.onerror = () => {
     window.clearTimeout(timeoutTimer);
-    if (finished) return;
+    if (finished || completed) return;
 
-    // CONNECTING 表示连不上（401/CORS/API 地址错）；CLOSED 表示流中途断开
     const wasConnecting = es.readyState === EventSource.CONNECTING;
     es.close();
+    finished = true;
+
+    if (!wasConnecting && (accThinking || accResponse)) {
+      // 连接正常关闭但未收到 done：用已有内容结束，避免误报错
+      onUpdate(
+        normalizeReply({
+          thinking: accThinking,
+          response: accResponse,
+        })
+      );
+      finishStream();
+      return;
+    }
 
     onError(
       new ApiError(
         wasConnecting
           ? "无法建立 SSE 连接，请检查是否已登录、API 地址与 CORS 配置"
-          : "SSE 连接中断，请确认 Ollama 已启动且 OLLAMA_URL 配置正确"
+          : "AI 流式响应中断，请稍后重试或更换模型（如 qwen3:8b）"
       )
     );
   };
 
   return () => {
     finished = true;
+    completed = true;
     window.clearTimeout(timeoutTimer);
     es.close();
     cancelTypewriter?.();

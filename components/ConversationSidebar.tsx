@@ -7,7 +7,6 @@ import {
   Empty,
   Input,
   Modal,
-  Popconfirm,
   Spin,
 } from "antd";
 import type { MenuProps } from "antd";
@@ -43,6 +42,7 @@ export default function ConversationSidebar({
 }: ConversationSidebarProps) {
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
 
   function openRename(conv: Conversation) {
     setRenameTarget(conv);
@@ -62,6 +62,16 @@ export default function ConversationSidebar({
     setRenameTitle("");
   }
 
+  function handleDeleteOk() {
+    if (!deleteTarget) return;
+    onDelete(deleteTarget.id);
+    setDeleteTarget(null);
+  }
+
+  function handleDeleteCancel() {
+    setDeleteTarget(null);
+  }
+
   function getMenuItems(conv: Conversation): MenuProps["items"] {
     return [
       {
@@ -77,19 +87,11 @@ export default function ConversationSidebar({
         key: "delete",
         icon: <DeleteOutlined />,
         danger: true,
-        label: (
-          <Popconfirm
-            title="确定删除此会话？"
-            description="删除后消息不可恢复"
-            okText="删除"
-            cancelText="取消"
-            okButtonProps={{ danger: true }}
-            onConfirm={() => onDelete(conv.id)}
-            onPopupClick={(e) => e.stopPropagation()}
-          >
-            <span onClick={(e) => e.stopPropagation()}>删除</span>
-          </Popconfirm>
-        ),
+        label: "删除",
+        onClick: ({ domEvent }) => {
+          domEvent.stopPropagation();
+          setDeleteTarget(conv);
+        },
       },
     ];
   }
@@ -181,6 +183,21 @@ export default function ConversationSidebar({
           onChange={(e) => setRenameTitle(e.target.value)}
           onPressEnter={handleRenameOk}
         />
+      </Modal>
+
+      <Modal
+        title="确定删除此会话？"
+        open={!!deleteTarget}
+        okText="删除"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+        onOk={handleDeleteOk}
+        onCancel={handleDeleteCancel}
+        destroyOnHidden
+      >
+        <p style={{ margin: 0, color: "rgba(0,0,0,0.65)" }}>
+          删除后消息不可恢复
+        </p>
       </Modal>
     </>
   );

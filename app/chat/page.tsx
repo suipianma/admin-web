@@ -249,25 +249,30 @@ export default function ChatPage() {
   }
 
   async function handleDeleteConversation(id: number) {
-    if (streaming) return;
+    if (streaming) {
+      message.warning("正在生成回复，请稍后再删除");
+      return;
+    }
     try {
       await deleteConversation(id);
       const remaining = conversations.filter((c) => c.id !== id);
       setConversations(remaining);
 
-      if (activeConversationId !== id) return;
-
-      if (remaining.length > 0) {
-        const nextId = remaining[0].id;
-        setActiveConversationId(nextId);
-        await loadInitial(nextId);
-      } else {
-        const created = await createConversation();
-        setConversations([created.data]);
-        setActiveConversationId(created.data.id);
-        resetMessages();
+      if (activeConversationId === id) {
+        if (remaining.length > 0) {
+          const nextId = remaining[0].id;
+          resetMessages();
+          setActiveConversationId(nextId);
+          await loadInitial(nextId);
+        } else {
+          const created = await createConversation();
+          setConversations([created.data]);
+          setActiveConversationId(created.data.id);
+          resetMessages();
+        }
+        setDrawerOpen(false);
       }
-      setDrawerOpen(false);
+
       message.success("会话已删除");
     } catch (err) {
       message.error(err instanceof Error ? err.message : "删除会话失败");

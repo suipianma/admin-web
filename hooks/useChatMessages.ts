@@ -71,7 +71,6 @@ export function useChatMessages() {
       setHasMore(page.hasMore);
       setTotal(page.total);
       setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
-      tempIdRef.current = items.reduce((max, m) => Math.max(max, m.id), 0);
     } finally {
       setLoading(false);
     }
@@ -93,9 +92,15 @@ export function useChatMessages() {
           setHasMore(false);
           return;
         }
-        setMessages((prev) => [...older, ...prev]);
+        const existing = new Set(messages.map((m) => m.id));
+        const uniqueOlder = older.filter((m) => !existing.has(m.id));
+        if (uniqueOlder.length === 0) {
+          setHasMore(page.hasMore);
+          return;
+        }
+        setMessages((prev) => [...uniqueOlder, ...prev]);
         setHasMore(page.hasMore);
-        setFirstItemIndex((prev) => prev - older.length);
+        setFirstItemIndex((prev) => prev - uniqueOlder.length);
       } finally {
         setLoadingMore(false);
       }
@@ -119,10 +124,6 @@ export function useChatMessages() {
     });
     setHasMore(page.hasMore);
     setTotal(page.total);
-    tempIdRef.current = serverItems.reduce(
-      (max, m) => Math.max(max, m.id),
-      tempIdRef.current
-    );
   }, []);
 
   const appendOptimistic = useCallback(

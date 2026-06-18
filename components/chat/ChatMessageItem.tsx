@@ -65,7 +65,11 @@ function ChatMessageItem({
         <div className="chat-ai-header">
           <span className="chat-ai-name">AI 助手</span>
           {msg.fromCache && <span className="chat-cache-tag">缓存</span>}
-          {isStreamingMsg && <span className="chat-streaming-tag">输出中</span>}
+          {isStreamingMsg && (
+            <span className="chat-streaming-tag">
+              {msg.content ? "输出中" : msg.thinking ? "思考中" : "生成中"}
+            </span>
+          )}
         </div>
         <div className="chat-bubble chat-bubble-ai">
           {isWaiting ? (
