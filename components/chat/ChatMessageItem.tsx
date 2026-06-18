@@ -4,6 +4,14 @@ import { memo } from "react";
 import { Avatar } from "antd";
 import { BulbOutlined, RobotOutlined } from "@ant-design/icons";
 import ChatMarkdown from "@/components/ChatMarkdown";
+import ToolCallBlock from "@/components/chat/ToolCallBlock";
+
+export interface ToolCallItem {
+  tool: string;
+  args: Record<string, string>;
+  result?: string;
+  status: "calling" | "done" | "error";
+}
 
 export interface ChatMessage {
   id: number;
@@ -11,6 +19,7 @@ export interface ChatMessage {
   content: string;
   thinking?: string;
   fromCache?: boolean;
+  toolCalls?: ToolCallItem[];
 }
 
 interface ChatMessageItemProps {
@@ -38,7 +47,12 @@ function ChatMessageItem({
 }: ChatMessageItemProps) {
   const isUser = msg.role === "user";
   const isWaiting =
-    isStreaming && isLast && !isUser && !msg.content && !msg.thinking;
+    isStreaming &&
+    isLast &&
+    !isUser &&
+    !msg.content &&
+    !msg.thinking &&
+    !msg.toolCalls?.length;
   const isStreamingMsg = isStreaming && isLast && !isUser;
 
   if (isUser) {
@@ -67,7 +81,13 @@ function ChatMessageItem({
           {msg.fromCache && <span className="chat-cache-tag">缓存</span>}
           {isStreamingMsg && (
             <span className="chat-streaming-tag">
-              {msg.content ? "输出中" : msg.thinking ? "思考中" : "生成中"}
+              {msg.toolCalls?.some((t) => t.status === "calling")
+                ? "调用工具"
+                : msg.content
+                  ? "输出中"
+                  : msg.thinking
+                    ? "思考中"
+                    : "生成中"}
             </span>
           )}
         </div>
@@ -79,6 +99,9 @@ function ChatMessageItem({
             </div>
           ) : (
             <div className="chat-ai-content">
+              {msg.toolCalls && msg.toolCalls.length > 0 && (
+                <ToolCallBlock toolCalls={msg.toolCalls} />
+              )}
               {msg.thinking && (
                 <details className="chat-thinking" open={isStreamingMsg}>
                   <summary className="chat-thinking-summary">
@@ -129,6 +152,7 @@ export default memo(ChatMessageItem, (prev, next) => {
     prev.msg.content === next.msg.content &&
     prev.msg.thinking === next.msg.thinking &&
     prev.msg.fromCache === next.msg.fromCache &&
+    JSON.stringify(prev.msg.toolCalls) === JSON.stringify(next.msg.toolCalls) &&
     prev.isLast === next.isLast &&
     prev.isStreaming === next.isStreaming &&
     prev.userAvatarText === next.userAvatarText

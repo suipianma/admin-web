@@ -140,19 +140,76 @@ export function useChatMessages() {
   const updateMessage = useCallback(
     (
       id: number,
-      payload: { content: string; thinking?: string; fromCache?: boolean }
+      payload: {
+        content?: string;
+        thinking?: string;
+        fromCache?: boolean;
+        toolCalls?: ChatMessage["toolCalls"];
+      }
     ) => {
       setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === id
-            ? {
-                ...msg,
-                content: payload.content,
-                thinking: payload.thinking,
-                fromCache: payload.fromCache,
-              }
-            : msg
-        )
+        prev.map((msg) => {
+          if (msg.id !== id) return msg;
+          return {
+            ...msg,
+            ...(payload.content !== undefined
+              ? { content: payload.content }
+              : {}),
+            ...(payload.thinking !== undefined
+              ? { thinking: payload.thinking }
+              : {}),
+            ...(payload.fromCache !== undefined
+              ? { fromCache: payload.fromCache }
+              : {}),
+            ...(payload.toolCalls !== undefined
+              ? { toolCalls: payload.toolCalls }
+              : {}),
+          };
+        })
+      );
+    },
+    []
+  );
+
+  const appendToolCall = useCallback(
+    (id: number, tool: string, args: Record<string, string>) => {
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.id !== id) return msg;
+          const toolCalls = msg.toolCalls ?? [];
+          return {
+            ...msg,
+            toolCalls: [...toolCalls, { tool, args, status: "calling" as const }],
+          };
+        })
+      );
+    },
+    []
+  );
+
+  const completeToolCall = useCallback(
+    (
+      id: number,
+      tool: string,
+      result: string,
+      error?: string
+    ) => {
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.id !== id) return msg;
+          return {
+            ...msg,
+            toolCalls: (msg.toolCalls ?? []).map((item) =>
+              item.tool === tool && item.status === "calling"
+                ? {
+                    ...item,
+                    result,
+                    status: error ? ("error" as const) : ("done" as const),
+                  }
+                : item
+            ),
+          };
+        })
       );
     },
     []
@@ -175,6 +232,8 @@ export function useChatMessages() {
     syncFromServer,
     appendOptimistic,
     updateMessage,
+    appendToolCall,
+    completeToolCall,
     removeMessages,
     reset,
   };

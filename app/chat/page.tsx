@@ -89,6 +89,8 @@ export default function ChatPage() {
     syncFromServer,
     appendOptimistic,
     updateMessage,
+    appendToolCall,
+    completeToolCall,
     removeMessages,
     reset: resetMessages,
   } = useChatMessages();
@@ -302,6 +304,16 @@ export default function ChatPage() {
     stopStreamRef.current = streamChat(conversationId, content, {
       promptId,
       onUpdate: (reply) => pushStream(reply),
+      onToolCall: ({ tool, args }) => {
+        const assistantId = assistantIdRef.current;
+        if (assistantId == null) return;
+        appendToolCall(assistantId, tool, args);
+      },
+      onToolResult: ({ tool, result, error }) => {
+        const assistantId = assistantIdRef.current;
+        if (assistantId == null) return;
+        completeToolCall(assistantId, tool, result, error);
+      },
       onDone: () => {
         flushNow();
         setStreaming(false);

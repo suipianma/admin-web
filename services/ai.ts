@@ -16,6 +16,15 @@ export interface StreamChatOptions {
   onUpdate: (reply: ChatReplyResult) => void;
   onDone: () => void;
   onError: (error: Error) => void;
+  onToolCall?: (payload: {
+    tool: string;
+    args: Record<string, string>;
+  }) => void;
+  onToolResult?: (payload: {
+    tool: string;
+    result: string;
+    error?: string;
+  }) => void;
   promptId?: string;
 }
 
@@ -57,7 +66,14 @@ function normalizeReply(raw: {
 export function streamChat(
   conversationId: number,
   content: string,
-  { onUpdate, onDone, onError, promptId }: StreamChatOptions
+  {
+    onUpdate,
+    onDone,
+    onError,
+    onToolCall,
+    onToolResult,
+    promptId,
+  }: StreamChatOptions
 ): () => void {
   const token = getToken();
   const params = new URLSearchParams({ content });
@@ -109,6 +125,10 @@ export function streamChat(
         error?: string;
         done?: boolean;
         fromCache?: boolean;
+        phase?: "tool_call" | "tool_result";
+        tool?: string;
+        args?: Record<string, string>;
+        result?: string;
         data?: {
           thinking?: string;
           response?: string;
@@ -117,6 +137,10 @@ export function streamChat(
           error?: string;
           done?: boolean;
           fromCache?: boolean;
+          phase?: "tool_call" | "tool_result";
+          tool?: string;
+          args?: Record<string, string>;
+          result?: string;
         };
       };
 
@@ -129,6 +153,20 @@ export function streamChat(
         window.clearTimeout(timeoutTimer);
         es.close();
         onError(new ApiError(parsed.error));
+        return;
+      }
+
+      if (parsed.phase === "tool_call" && parsed.tool && parsed.args) {
+        onToolCall?.({ tool: parsed.tool, args: parsed.args });
+        return;
+      }
+
+      if (parsed.phase === "tool_result" && parsed.tool && parsed.result) {
+        onToolResult?.({
+          tool: parsed.tool,
+          result: parsed.result,
+          error: parsed.error,
+        });
         return;
       }
 
