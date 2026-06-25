@@ -3,6 +3,7 @@ import {
   getConversationMessages,
   type ConversationMessage,
 } from "@/services/conversation";
+import type { RagCitation } from "@/services/ai";
 import type { ChatMessage } from "@/components/chat/ChatMessageItem";
 
 export const MESSAGE_PAGE_SIZE = 30;
@@ -145,6 +146,7 @@ export function useChatMessages() {
         thinking?: string;
         fromCache?: boolean;
         toolCalls?: ChatMessage["toolCalls"];
+        citations?: RagCitation[];
       }
     ) => {
       setMessages((prev) =>
@@ -163,6 +165,9 @@ export function useChatMessages() {
               : {}),
             ...(payload.toolCalls !== undefined
               ? { toolCalls: payload.toolCalls }
+              : {}),
+            ...(payload.citations !== undefined
+              ? { citations: payload.citations }
               : {}),
           };
         })

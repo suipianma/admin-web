@@ -5,6 +5,8 @@ import { Avatar } from "antd";
 import { BulbOutlined, RobotOutlined } from "@ant-design/icons";
 import ChatMarkdown from "@/components/ChatMarkdown";
 import ToolCallBlock from "@/components/chat/ToolCallBlock";
+import CitationBlock from "@/components/chat/CitationBlock";
+import type { RagCitation } from "@/services/ai";
 
 export interface ToolCallItem {
   tool: string;
@@ -20,6 +22,7 @@ export interface ChatMessage {
   thinking?: string;
   fromCache?: boolean;
   toolCalls?: ToolCallItem[];
+  citations?: RagCitation[];
 }
 
 interface ChatMessageItemProps {
@@ -102,6 +105,9 @@ function ChatMessageItem({
               {msg.toolCalls && msg.toolCalls.length > 0 && (
                 <ToolCallBlock toolCalls={msg.toolCalls} />
               )}
+              {msg.citations && msg.citations.length > 0 && (
+                <CitationBlock citations={msg.citations} />
+              )}
               {msg.thinking && (
                 <details className="chat-thinking" open={isStreamingMsg}>
                   <summary className="chat-thinking-summary">
@@ -153,6 +159,7 @@ export default memo(ChatMessageItem, (prev, next) => {
     prev.msg.thinking === next.msg.thinking &&
     prev.msg.fromCache === next.msg.fromCache &&
     JSON.stringify(prev.msg.toolCalls) === JSON.stringify(next.msg.toolCalls) &&
+    JSON.stringify(prev.msg.citations) === JSON.stringify(next.msg.citations) &&
     prev.isLast === next.isLast &&
     prev.isStreaming === next.isStreaming &&
     prev.userAvatarText === next.userAvatarText

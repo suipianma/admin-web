@@ -1,4 +1,4 @@
-export type NavIconKey = "home" | "users" | "chat";
+export type NavIconKey = "home" | "users" | "chat" | "book";
 
 export interface NavItem {
   href: string;
@@ -16,6 +16,7 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["admin"],
   },
   { href: "/chat", label: "AI 聊天", icon: "chat" },
+  { href: "/knowledge-bases", label: "知识库", icon: "book" },
 ];
 
 export function filterNavByRole(userInfo: { role: string } | null) {

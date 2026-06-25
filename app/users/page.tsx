@@ -193,7 +193,6 @@ function UsersContent() {
       <Modal
         title={editingUser ? "编辑用户" : "新增用户"}
         open={modalOpen}
-        forceRender
         centered
         onCancel={() => setModalOpen(false)}
         onOk={() => form.submit()}

@@ -3,8 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "antd";
-import { CloseOutlined, MenuOutlined } from "@ant-design/icons";
-import { NAV_ITEMS } from "@/config/nav";
+import {
+  BookOutlined,
+  CloseOutlined,
+  HomeOutlined,
+  MenuOutlined,
+  MessageOutlined,
+  TeamOutlined,
+} from "@ant-design/icons";
+import { NAV_ITEMS, type NavIconKey } from "@/config/nav";
 import Sidebar from "@/components/Sidebar";
 import ThemeToggle from "@/components/ThemeToggle";
 import { useUserInfo } from "@/hooks/useUserInfo";
@@ -12,6 +19,13 @@ import { clearAuth, getUserInfo } from "@/utils/auth";
 import { logout } from "@/services/auth";
 
 const PUBLIC_PATHS = ["/login", "/register"];
+
+const NAV_ICONS: Record<NavIconKey, React.ReactNode> = {
+  home: <HomeOutlined />,
+  users: <TeamOutlined />,
+  chat: <MessageOutlined />,
+  book: <BookOutlined />,
+};
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -68,7 +82,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         />
         <div className="mobile-header-center">
           <div className="mobile-header-title">
-            {currentNav?.label ?? "AI Admin"}
+            {currentNav?.icon ? NAV_ICONS[currentNav.icon] : null}
+            <span>{currentNav?.label ?? "AI Admin"}</span>
           </div>
         </div>
         <ThemeToggle />

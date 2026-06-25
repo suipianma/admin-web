@@ -13,6 +13,7 @@ import {
 import ConversationSidebar from "@/components/ConversationSidebar";
 import ChatFullscreenButton from "@/components/chat/ChatFullscreenButton";
 import ChatMessageArea from "@/components/chat/ChatMessageArea";
+import KnowledgeBasePicker from "@/components/chat/KnowledgeBasePicker";
 import {
   PromptTemplateChip,
   PromptTemplateMenu,
@@ -23,7 +24,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserInfo } from "@/hooks/useUserInfo";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useStreamBuffer } from "@/hooks/useStreamBuffer";
-import { streamChat } from "@/services/ai";
+import { streamChat, type RagCitation } from "@/services/ai";
+import { getKnowledgeBases, type KnowledgeBase } from "@/services/knowledge-base";
 import { getPromptTemplates, type PromptTemplateItem } from "@/services/prompt";
 import {
   createConversation,
@@ -52,6 +54,16 @@ function getUserAvatarText(username?: string) {
   return username.slice(0, 1).toUpperCase();
 }
 
+function normalizeRagCitations(citations: RagCitation[]) {
+  return citations.filter(
+    (item) =>
+      typeof item.chunkId === "number" &&
+      typeof item.documentName === "string" &&
+      typeof item.score === "number" &&
+      typeof item.snippet === "string"
+  );
+}
+
 export default function ChatPage() {
   useAuth();
   const { message } = App.useApp();
@@ -71,6 +83,10 @@ export default function ChatPage() {
   );
   const [selectedPrompt, setSelectedPrompt] =
     useState<PromptTemplateItem | null>(null);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<number[]>(
+    []
+  );
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stopStreamRef = useRef<(() => void) | null>(null);
@@ -153,6 +169,12 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
+    getKnowledgeBases()
+      .then((res) => setKnowledgeBases(res.data))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     return () => stopStreamRef.current?.();
   }, []);
 
@@ -170,6 +192,10 @@ export default function ChatPage() {
     if (userId != null) {
       setLastConversationId(userId, activeConversationId);
     }
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    setSelectedKnowledgeBaseIds([]);
   }, [activeConversationId]);
 
   // 全屏模式：锁定页面滚动，Esc 退出
@@ -219,6 +245,7 @@ export default function ChatPage() {
     setActiveConversationId(id);
     setInput("");
     setSelectedPrompt(null);
+    setSelectedKnowledgeBaseIds([]);
     setDrawerOpen(false);
     await loadInitial(id);
   }
@@ -232,6 +259,7 @@ export default function ChatPage() {
       resetMessages();
       setInput("");
       setSelectedPrompt(null);
+      setSelectedKnowledgeBaseIds([]);
       setDrawerOpen(false);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "新建会话失败");
@@ -288,7 +316,8 @@ export default function ChatPage() {
   function doSend(
     content: string,
     conversationId: number,
-    promptId?: string
+    promptId?: string,
+    knowledgeBaseIds?: number[]
   ) {
     setInput("");
     if (inputRef.current) inputRef.current.style.height = "auto";
@@ -303,11 +332,19 @@ export default function ChatPage() {
 
     stopStreamRef.current = streamChat(conversationId, content, {
       promptId,
+      knowledgeBaseIds,
       onUpdate: (reply) => pushStream(reply),
       onToolCall: ({ tool, args }) => {
         const assistantId = assistantIdRef.current;
         if (assistantId == null) return;
         appendToolCall(assistantId, tool, args);
+      },
+      onRagRetrieval: ({ citations }) => {
+        const assistantId = assistantIdRef.current;
+        if (assistantId == null) return;
+        updateMessage(assistantId, {
+          citations: normalizeRagCitations(citations),
+        });
       },
       onToolResult: ({ tool, result, error }) => {
         const assistantId = assistantIdRef.current;
@@ -354,7 +391,12 @@ export default function ChatPage() {
     }
 
     // 选中模板则本次发送带 promptId，未选中则普通对话
-    await doSend(content, activeConversationId, selectedPrompt?.id);
+    await doSend(
+      content,
+      activeConversationId,
+      selectedPrompt?.id,
+      selectedKnowledgeBaseIds
+    );
   }
 
   function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -504,6 +546,12 @@ export default function ChatPage() {
                       disabled={streaming || activeConversationId == null}
                       onSelect={handlePromptSelect}
                       onClear={() => setSelectedPrompt(null)}
+                    />
+                    <KnowledgeBasePicker
+                      options={knowledgeBases}
+                      value={selectedKnowledgeBaseIds}
+                      disabled={streaming || activeConversationId == null}
+                      onChange={setSelectedKnowledgeBaseIds}
                     />
                   </div>
                 </div>

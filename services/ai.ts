@@ -12,6 +12,14 @@ export interface ChatReplyResult {
   fromCache?: boolean;
 }
 
+export interface RagCitation {
+  chunkId: number;
+  documentName: string;
+  page?: number | null;
+  snippet: string;
+  score: number;
+}
+
 export interface StreamChatOptions {
   onUpdate: (reply: ChatReplyResult) => void;
   onDone: () => void;
@@ -25,7 +33,9 @@ export interface StreamChatOptions {
     result: string;
     error?: string;
   }) => void;
+  onRagRetrieval?: (payload: { citations: RagCitation[] }) => void;
   promptId?: string;
+  knowledgeBaseIds?: number[];
 }
 
 function cleanText(text: string): string {
@@ -72,13 +82,18 @@ export function streamChat(
     onError,
     onToolCall,
     onToolResult,
+    onRagRetrieval,
     promptId,
+    knowledgeBaseIds,
   }: StreamChatOptions
 ): () => void {
   const token = getToken();
   const params = new URLSearchParams({ content });
   if (promptId) {
     params.set("promptId", promptId);
+  }
+  if (knowledgeBaseIds?.length) {
+    params.set("knowledgeBaseIds", knowledgeBaseIds.join(","));
   }
   // EventSource 无法带 Authorization header，token 放 query
   if (token) {
@@ -125,10 +140,11 @@ export function streamChat(
         error?: string;
         done?: boolean;
         fromCache?: boolean;
-        phase?: "tool_call" | "tool_result";
+        phase?: "tool_call" | "tool_result" | "rag_retrieval";
         tool?: string;
         args?: Record<string, string>;
         result?: string;
+        citations?: RagCitation[];
         data?: {
           thinking?: string;
           response?: string;
@@ -137,10 +153,11 @@ export function streamChat(
           error?: string;
           done?: boolean;
           fromCache?: boolean;
-          phase?: "tool_call" | "tool_result";
+          phase?: "tool_call" | "tool_result" | "rag_retrieval";
           tool?: string;
           args?: Record<string, string>;
           result?: string;
+          citations?: RagCitation[];
         };
       };
 
@@ -166,6 +183,13 @@ export function streamChat(
           tool: parsed.tool,
           result: parsed.result,
           error: parsed.error,
+        });
+        return;
+      }
+
+      if (parsed.phase === "rag_retrieval") {
+        onRagRetrieval?.({
+          citations: Array.isArray(parsed.citations) ? parsed.citations : [],
         });
         return;
       }
