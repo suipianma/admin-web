@@ -24,14 +24,19 @@ export interface StreamChatOptions {
   onUpdate: (reply: ChatReplyResult) => void;
   onDone: () => void;
   onError: (error: Error) => void;
+  onAgentStart?: (payload: { maxSteps: number }) => void;
+  onAgentStep?: (payload: { step: number; maxSteps: number }) => void;
+  onAgentDone?: (payload: { steps: number }) => void;
   onToolCall?: (payload: {
     tool: string;
     args: Record<string, string>;
+    step?: number;
   }) => void;
   onToolResult?: (payload: {
     tool: string;
     result: string;
     error?: string;
+    step?: number;
   }) => void;
   onRagRetrieval?: (payload: { citations: RagCitation[] }) => void;
   promptId?: string;
@@ -83,6 +88,9 @@ export function streamChat(
     onToolCall,
     onToolResult,
     onRagRetrieval,
+    onAgentStart,
+    onAgentStep,
+    onAgentDone,
     promptId,
     knowledgeBaseIds,
   }: StreamChatOptions
@@ -140,7 +148,16 @@ export function streamChat(
         error?: string;
         done?: boolean;
         fromCache?: boolean;
-        phase?: "tool_call" | "tool_result" | "rag_retrieval";
+        phase?:
+          | "agent_start"
+          | "agent_step"
+          | "agent_done"
+          | "tool_call"
+          | "tool_result"
+          | "rag_retrieval";
+        step?: number;
+        maxSteps?: number;
+        steps?: number;
         tool?: string;
         args?: Record<string, string>;
         result?: string;
@@ -153,7 +170,16 @@ export function streamChat(
           error?: string;
           done?: boolean;
           fromCache?: boolean;
-          phase?: "tool_call" | "tool_result" | "rag_retrieval";
+          phase?:
+          | "agent_start"
+          | "agent_step"
+          | "agent_done"
+          | "tool_call"
+          | "tool_result"
+          | "rag_retrieval";
+        step?: number;
+        maxSteps?: number;
+        steps?: number;
           tool?: string;
           args?: Record<string, string>;
           result?: string;
@@ -173,8 +199,31 @@ export function streamChat(
         return;
       }
 
+      if (parsed.phase === "agent_start" && parsed.maxSteps != null) {
+        onAgentStart?.({ maxSteps: parsed.maxSteps });
+        return;
+      }
+
+      if (
+        parsed.phase === "agent_step" &&
+        parsed.step != null &&
+        parsed.maxSteps != null
+      ) {
+        onAgentStep?.({ step: parsed.step, maxSteps: parsed.maxSteps });
+        return;
+      }
+
+      if (parsed.phase === "agent_done") {
+        onAgentDone?.({ steps: parsed.steps ?? 0 });
+        return;
+      }
+
       if (parsed.phase === "tool_call" && parsed.tool && parsed.args) {
-        onToolCall?.({ tool: parsed.tool, args: parsed.args });
+        onToolCall?.({
+          tool: parsed.tool,
+          args: parsed.args,
+          step: parsed.step,
+        });
         return;
       }
 
@@ -183,6 +232,7 @@ export function streamChat(
           tool: parsed.tool,
           result: parsed.result,
           error: parsed.error,
+          step: parsed.step,
         });
         return;
       }

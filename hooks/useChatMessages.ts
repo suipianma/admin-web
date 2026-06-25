@@ -146,6 +146,7 @@ export function useChatMessages() {
         thinking?: string;
         fromCache?: boolean;
         toolCalls?: ChatMessage["toolCalls"];
+        agentSteps?: ChatMessage["agentSteps"];
         citations?: RagCitation[];
       }
     ) => {
@@ -166,6 +167,9 @@ export function useChatMessages() {
             ...(payload.toolCalls !== undefined
               ? { toolCalls: payload.toolCalls }
               : {}),
+            ...(payload.agentSteps !== undefined
+              ? { agentSteps: payload.agentSteps }
+              : {}),
             ...(payload.citations !== undefined
               ? { citations: payload.citations }
               : {}),
@@ -176,15 +180,75 @@ export function useChatMessages() {
     []
   );
 
+  const appendAgentStart = useCallback((id: number, maxSteps: number) => {
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id !== id) return msg;
+        return {
+          ...msg,
+          agentSteps: [
+            ...(msg.agentSteps ?? []),
+            { step: 0, type: "start" as const, maxSteps },
+          ],
+        };
+      })
+    );
+  }, []);
+
+  const appendAgentStep = useCallback(
+    (id: number, step: number, maxSteps: number) => {
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.id !== id) return msg;
+          return {
+            ...msg,
+            agentSteps: [
+              ...(msg.agentSteps ?? []),
+              { step, type: "step" as const, maxSteps },
+            ],
+          };
+        })
+      );
+    },
+    []
+  );
+
+  const finishAgent = useCallback((id: number, totalSteps: number) => {
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id !== id) return msg;
+        return {
+          ...msg,
+          agentSteps: [
+            ...(msg.agentSteps ?? []),
+            { step: totalSteps, type: "done" as const, totalSteps },
+          ],
+        };
+      })
+    );
+  }, []);
+
   const appendToolCall = useCallback(
-    (id: number, tool: string, args: Record<string, string>) => {
+    (
+      id: number,
+      tool: string,
+      args: Record<string, string>,
+      step?: number
+    ) => {
       setMessages((prev) =>
         prev.map((msg) => {
           if (msg.id !== id) return msg;
           const toolCalls = msg.toolCalls ?? [];
+          const agentSteps = msg.agentSteps ?? [];
           return {
             ...msg,
             toolCalls: [...toolCalls, { tool, args, status: "calling" as const }],
+            agentSteps: step
+              ? [
+                  ...agentSteps,
+                  { step, type: "tool_call" as const, tool, args },
+                ]
+              : agentSteps,
           };
         })
       );
@@ -197,11 +261,13 @@ export function useChatMessages() {
       id: number,
       tool: string,
       result: string,
-      error?: string
+      error?: string,
+      step?: number
     ) => {
       setMessages((prev) =>
         prev.map((msg) => {
           if (msg.id !== id) return msg;
+          const agentSteps = msg.agentSteps ?? [];
           return {
             ...msg,
             toolCalls: (msg.toolCalls ?? []).map((item) =>
@@ -213,6 +279,18 @@ export function useChatMessages() {
                   }
                 : item
             ),
+            agentSteps: step
+              ? [
+                  ...agentSteps,
+                  {
+                    step,
+                    type: "tool_result" as const,
+                    tool,
+                    result,
+                    error,
+                  },
+                ]
+              : agentSteps,
           };
         })
       );
@@ -237,6 +315,9 @@ export function useChatMessages() {
     syncFromServer,
     appendOptimistic,
     updateMessage,
+    appendAgentStart,
+    appendAgentStep,
+    finishAgent,
     appendToolCall,
     completeToolCall,
     removeMessages,

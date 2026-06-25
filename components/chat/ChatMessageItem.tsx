@@ -5,6 +5,7 @@ import { Avatar } from "antd";
 import { BulbOutlined, RobotOutlined } from "@ant-design/icons";
 import ChatMarkdown from "@/components/ChatMarkdown";
 import ToolCallBlock from "@/components/chat/ToolCallBlock";
+import AgentStepBlock from "@/components/chat/AgentStepBlock";
 import CitationBlock from "@/components/chat/CitationBlock";
 import type { RagCitation } from "@/services/ai";
 
@@ -15,6 +16,17 @@ export interface ToolCallItem {
   status: "calling" | "done" | "error";
 }
 
+export interface AgentStepItem {
+  step: number;
+  type: "start" | "step" | "tool_call" | "tool_result" | "done";
+  tool?: string;
+  args?: Record<string, string>;
+  result?: string;
+  error?: string;
+  maxSteps?: number;
+  totalSteps?: number;
+}
+
 export interface ChatMessage {
   id: number;
   role: "user" | "assistant";
@@ -22,6 +34,7 @@ export interface ChatMessage {
   thinking?: string;
   fromCache?: boolean;
   toolCalls?: ToolCallItem[];
+  agentSteps?: AgentStepItem[];
   citations?: RagCitation[];
 }
 
@@ -55,7 +68,8 @@ function ChatMessageItem({
     !isUser &&
     !msg.content &&
     !msg.thinking &&
-    !msg.toolCalls?.length;
+    !msg.toolCalls?.length &&
+    !msg.agentSteps?.length;
   const isStreamingMsg = isStreaming && isLast && !isUser;
 
   if (isUser) {
@@ -86,7 +100,9 @@ function ChatMessageItem({
             <span className="chat-streaming-tag">
               {msg.toolCalls?.some((t) => t.status === "calling")
                 ? "调用工具"
-                : msg.content
+                : msg.agentSteps?.length
+                  ? "Agent 推理"
+                  : msg.content
                   ? "输出中"
                   : msg.thinking
                     ? "思考中"
@@ -102,6 +118,9 @@ function ChatMessageItem({
             </div>
           ) : (
             <div className="chat-ai-content">
+              {msg.agentSteps && msg.agentSteps.length > 0 && (
+                <AgentStepBlock steps={msg.agentSteps} />
+              )}
               {msg.toolCalls && msg.toolCalls.length > 0 && (
                 <ToolCallBlock toolCalls={msg.toolCalls} />
               )}
@@ -159,6 +178,7 @@ export default memo(ChatMessageItem, (prev, next) => {
     prev.msg.thinking === next.msg.thinking &&
     prev.msg.fromCache === next.msg.fromCache &&
     JSON.stringify(prev.msg.toolCalls) === JSON.stringify(next.msg.toolCalls) &&
+    JSON.stringify(prev.msg.agentSteps) === JSON.stringify(next.msg.agentSteps) &&
     JSON.stringify(prev.msg.citations) === JSON.stringify(next.msg.citations) &&
     prev.isLast === next.isLast &&
     prev.isStreaming === next.isStreaming &&

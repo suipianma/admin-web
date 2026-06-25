@@ -105,6 +105,9 @@ export default function ChatPage() {
     syncFromServer,
     appendOptimistic,
     updateMessage,
+    appendAgentStart,
+    appendAgentStep,
+    finishAgent,
     appendToolCall,
     completeToolCall,
     removeMessages,
@@ -334,10 +337,25 @@ export default function ChatPage() {
       promptId,
       knowledgeBaseIds,
       onUpdate: (reply) => pushStream(reply),
-      onToolCall: ({ tool, args }) => {
+      onAgentStart: ({ maxSteps }) => {
         const assistantId = assistantIdRef.current;
         if (assistantId == null) return;
-        appendToolCall(assistantId, tool, args);
+        appendAgentStart(assistantId, maxSteps);
+      },
+      onAgentStep: ({ step, maxSteps }) => {
+        const assistantId = assistantIdRef.current;
+        if (assistantId == null) return;
+        appendAgentStep(assistantId, step, maxSteps);
+      },
+      onAgentDone: ({ steps }) => {
+        const assistantId = assistantIdRef.current;
+        if (assistantId == null) return;
+        finishAgent(assistantId, steps);
+      },
+      onToolCall: ({ tool, args, step }) => {
+        const assistantId = assistantIdRef.current;
+        if (assistantId == null) return;
+        appendToolCall(assistantId, tool, args, step);
       },
       onRagRetrieval: ({ citations }) => {
         const assistantId = assistantIdRef.current;
@@ -346,10 +364,10 @@ export default function ChatPage() {
           citations: normalizeRagCitations(citations),
         });
       },
-      onToolResult: ({ tool, result, error }) => {
+      onToolResult: ({ tool, result, error, step }) => {
         const assistantId = assistantIdRef.current;
         if (assistantId == null) return;
-        completeToolCall(assistantId, tool, result, error);
+        completeToolCall(assistantId, tool, result, error, step);
       },
       onDone: () => {
         flushNow();
