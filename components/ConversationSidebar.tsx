@@ -23,26 +23,29 @@ interface ConversationSidebarProps {
   conversations: Conversation[];
   activeId: number | null;
   loading: boolean;
-  disabled?: boolean;
+  streamingIds?: number[];
   onSelect: (id: number) => void;
   onCreate: () => void;
   onRename: (id: number, title: string) => void;
   onDelete: (id: number) => void;
+  onDeleteAll: () => void;
 }
 
 export default function ConversationSidebar({
   conversations,
   activeId,
   loading,
-  disabled = false,
+  streamingIds = [],
   onSelect,
   onCreate,
   onRename,
   onDelete,
+  onDeleteAll,
 }: ConversationSidebarProps) {
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
 
   function openRename(conv: Conversation) {
     setRenameTarget(conv);
@@ -109,7 +112,6 @@ export default function ConversationSidebar({
             className="conv-new-btn"
             icon={<PlusOutlined />}
             block
-            disabled={disabled}
             onClick={onCreate}
           >
             新建会话
@@ -130,13 +132,14 @@ export default function ConversationSidebar({
           ) : (
             conversations.map((conv) => {
               const isActive = conv.id === activeId;
+              const isStreaming = streamingIds.includes(conv.id);
 
               return (
                 <div
                   key={conv.id}
                   className={`conv-item${isActive ? " conv-item-active" : ""}`}
                   onClick={() => {
-                    if (!disabled && conv.id !== activeId) {
+                    if (conv.id !== activeId) {
                       onSelect(conv.id);
                     }
                   }}
@@ -146,11 +149,15 @@ export default function ConversationSidebar({
                   </span>
                   <span className="conv-item-title" title={conv.title}>
                     {conv.title}
+                    {isStreaming && (
+                      <span className="conv-item-streaming" title="生成中">
+                        ···
+                      </span>
+                    )}
                   </span>
                   <Dropdown
                     menu={{ items: getMenuItems(conv) }}
                     trigger={["click"]}
-                    disabled={disabled}
                   >
                     <Button
                       type="text"
@@ -165,6 +172,21 @@ export default function ConversationSidebar({
             })
           )}
         </div>
+
+        {conversations.length > 0 && (
+          <div className="conv-sidebar-footer">
+            <Button
+              type="text"
+              danger
+              block
+              icon={<DeleteOutlined />}
+              className="conv-delete-all-btn"
+              onClick={() => setDeleteAllOpen(true)}
+            >
+              删除全部会话
+            </Button>
+          </div>
+        )}
       </div>
 
       <Modal
@@ -183,6 +205,24 @@ export default function ConversationSidebar({
           onChange={(e) => setRenameTitle(e.target.value)}
           onPressEnter={handleRenameOk}
         />
+      </Modal>
+
+      <Modal
+        title="确定删除全部会话？"
+        open={deleteAllOpen}
+        okText="全部删除"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+        onOk={() => {
+          setDeleteAllOpen(false);
+          onDeleteAll();
+        }}
+        onCancel={() => setDeleteAllOpen(false)}
+        destroyOnHidden
+      >
+        <p style={{ margin: 0, color: "rgba(0,0,0,0.65)" }}>
+          将删除所有会话及消息，此操作不可恢复
+        </p>
       </Modal>
 
       <Modal

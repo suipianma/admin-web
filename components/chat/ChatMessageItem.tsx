@@ -1,8 +1,13 @@
 "use client";
 
 import { memo } from "react";
-import { Avatar } from "antd";
-import { BulbOutlined, RobotOutlined } from "@ant-design/icons";
+import { Avatar, Button, Tooltip } from "antd";
+import {
+  BulbOutlined,
+  CopyOutlined,
+  RedoOutlined,
+  RobotOutlined,
+} from "@ant-design/icons";
 import ChatMarkdown from "@/components/ChatMarkdown";
 import ToolCallBlock from "@/components/chat/ToolCallBlock";
 import AgentStepBlock from "@/components/chat/AgentStepBlock";
@@ -43,6 +48,8 @@ interface ChatMessageItemProps {
   isLast: boolean;
   isStreaming: boolean;
   userAvatarText: string;
+  onCopy?: (text: string) => void;
+  onRegenerate?: (msgId: number) => void;
 }
 
 function TypingIndicator() {
@@ -55,11 +62,20 @@ function TypingIndicator() {
   );
 }
 
+function getCopyText(msg: ChatMessage) {
+  const parts: string[] = [];
+  if (msg.thinking) parts.push(msg.thinking);
+  if (msg.content) parts.push(msg.content);
+  return parts.join("\n\n").trim();
+}
+
 function ChatMessageItem({
   msg,
   isLast,
   isStreaming,
   userAvatarText,
+  onCopy,
+  onRegenerate,
 }: ChatMessageItemProps) {
   const isUser = msg.role === "user";
   const isWaiting =
@@ -71,11 +87,48 @@ function ChatMessageItem({
     !msg.toolCalls?.length &&
     !msg.agentSteps?.length;
   const isStreamingMsg = isStreaming && isLast && !isUser;
+  const copyText = getCopyText(msg);
+  const canCopy = Boolean(copyText);
+  const canRegenerate =
+    !isUser && isLast && !isStreaming && onRegenerate;
+
+  function renderActions() {
+    if (!canCopy && !canRegenerate) return null;
+    return (
+      <div className="chat-msg-actions">
+        {canCopy && (
+          <Tooltip title="复制">
+            <Button
+              type="text"
+              size="small"
+              className="chat-msg-action-btn"
+              icon={<CopyOutlined />}
+              onClick={() => onCopy?.(copyText)}
+              aria-label="复制消息"
+            />
+          </Tooltip>
+        )}
+        {canRegenerate && (
+          <Tooltip title="重新生成">
+            <Button
+              type="text"
+              size="small"
+              className="chat-msg-action-btn"
+              icon={<RedoOutlined />}
+              onClick={() => onRegenerate?.(msg.id)}
+              aria-label="重新生成"
+            />
+          </Tooltip>
+        )}
+      </div>
+    );
+  }
 
   if (isUser) {
     return (
       <div className="chat-row chat-row-user">
         <div className="chat-row-main">
+          {renderActions()}
           <div className="chat-bubble chat-bubble-user">{msg.content}</div>
         </div>
         <Avatar className="chat-avatar chat-avatar-user" size={32}>
@@ -103,10 +156,10 @@ function ChatMessageItem({
                 : msg.agentSteps?.length
                   ? "Agent 推理"
                   : msg.content
-                  ? "输出中"
-                  : msg.thinking
-                    ? "思考中"
-                    : "生成中"}
+                    ? "输出中"
+                    : msg.thinking
+                      ? "思考中"
+                      : "生成中"}
             </span>
           )}
         </div>
@@ -166,6 +219,7 @@ function ChatMessageItem({
             </div>
           )}
         </div>
+        {renderActions()}
       </div>
     </div>
   );
@@ -182,6 +236,8 @@ export default memo(ChatMessageItem, (prev, next) => {
     JSON.stringify(prev.msg.citations) === JSON.stringify(next.msg.citations) &&
     prev.isLast === next.isLast &&
     prev.isStreaming === next.isStreaming &&
-    prev.userAvatarText === next.userAvatarText
+    prev.userAvatarText === next.userAvatarText &&
+    prev.onCopy === next.onCopy &&
+    prev.onRegenerate === next.onRegenerate
   );
 });

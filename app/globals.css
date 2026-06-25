@@ -1082,6 +1082,82 @@ body {
   background: transparent !important;
 }
 
+.conv-sidebar-footer {
+  flex-shrink: 0;
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.conv-delete-all-btn {
+  height: 36px !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+}
+
+.conv-item-streaming {
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--color-primary);
+  letter-spacing: 1px;
+}
+
+.chat-msg-actions {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.chat-row:hover .chat-msg-actions,
+.chat-row:focus-within .chat-msg-actions {
+  opacity: 1;
+}
+
+.chat-row-user .chat-msg-actions {
+  justify-content: flex-end;
+}
+
+.chat-msg-action-btn {
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  color: var(--color-text-secondary) !important;
+}
+
+.chat-msg-action-btn:hover {
+  color: var(--color-primary) !important;
+  background: var(--color-primary-light) !important;
+}
+
+.chat-composer-stop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-shrink: 0;
+  min-width: 64px;
+  height: 36px;
+  margin: 6px 6px 6px 0;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  background: #ff4d4f;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.chat-composer-stop:hover {
+  background: #ff7875;
+}
+
+.chat-composer-stop:active {
+  transform: scale(0.97);
+}
+
 /* 移动端 Drawer 内侧边栏撑满高度 */
 .chat-drawer .ant-drawer-body {
   padding: 0;
@@ -1810,6 +1886,7 @@ body {
 }
 
 .chat-row-main {
+  position: relative;
   min-width: 0;
   max-width: calc(100% - 44px);
 }

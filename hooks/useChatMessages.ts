@@ -10,6 +10,13 @@ export const MESSAGE_PAGE_SIZE = 30;
 
 const INITIAL_FIRST_ITEM_INDEX = 100_000;
 
+export interface ConversationDraft {
+  messages: ChatMessage[];
+  hasMore: boolean;
+  total: number;
+  firstItemIndex: number;
+}
+
 interface MessagesPageResult {
   items: ConversationMessage[];
   hasMore: boolean;
@@ -51,6 +58,16 @@ export function useChatMessages() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [firstItemIndex, setFirstItemIndex] = useState(INITIAL_FIRST_ITEM_INDEX);
   const tempIdRef = useRef(0);
+  const draftsRef = useRef<Map<number, ConversationDraft>>(new Map());
+  const messagesRef = useRef(messages);
+  const hasMoreRef = useRef(hasMore);
+  const totalRef = useRef(total);
+  const firstItemIndexRef = useRef(firstItemIndex);
+
+  messagesRef.current = messages;
+  hasMoreRef.current = hasMore;
+  totalRef.current = total;
+  firstItemIndexRef.current = firstItemIndex;
 
   const reset = useCallback(() => {
     setMessages([]);
@@ -127,12 +144,40 @@ export function useChatMessages() {
     setTotal(page.total);
   }, []);
 
+  /** 停止生成后同步：对齐服务端 user 消息，保留未落库的 assistant 草稿 */
+  const syncAfterStop = useCallback(async (conversationId: number) => {
+    const res = await getConversationMessages(conversationId, {
+      limit: MESSAGE_PAGE_SIZE,
+    });
+    const page = normalizePage(res.data);
+    const serverItems = page.items.map(mapMessage);
+
+    setMessages((prev) => {
+      const pendingAssistant = [...prev]
+        .reverse()
+        .find((m) => m.id < 0 && m.role === "assistant");
+      const merged = new Map(serverItems.map((m) => [m.id, m]));
+      if (pendingAssistant) {
+        merged.set(pendingAssistant.id, pendingAssistant);
+      }
+      const next = Array.from(merged.values()).sort((a, b) => a.id - b.id);
+      messagesRef.current = next;
+      return next;
+    });
+    setHasMore(page.hasMore);
+    setTotal(page.total);
+  }, []);
+
   const appendOptimistic = useCallback(
     (role: ChatMessage["role"], content: string, thinking?: string) => {
       tempIdRef.current -= 1;
       const id = tempIdRef.current;
       const msg: ChatMessage = { id, role, content, thinking };
-      setMessages((prev) => [...prev, msg]);
+      setMessages((prev) => {
+        const next = [...prev, msg];
+        messagesRef.current = next;
+        return next;
+      });
       return id;
     },
     []
@@ -150,8 +195,8 @@ export function useChatMessages() {
         citations?: RagCitation[];
       }
     ) => {
-      setMessages((prev) =>
-        prev.map((msg) => {
+      setMessages((prev) => {
+        const next = prev.map((msg) => {
           if (msg.id !== id) return msg;
           return {
             ...msg,
@@ -174,8 +219,10 @@ export function useChatMessages() {
               ? { citations: payload.citations }
               : {}),
           };
-        })
-      );
+        });
+        messagesRef.current = next;
+        return next;
+      });
     },
     []
   );
@@ -303,6 +350,50 @@ export function useChatMessages() {
     setMessages((prev) => prev.filter((m) => !idSet.has(m.id)));
   }, []);
 
+  /** 将当前展示的消息快照存为流式草稿（切换会话时保留生成进度） */
+  const saveDraft = useCallback((conversationId: number) => {
+    setMessages((current) => {
+      draftsRef.current.set(conversationId, {
+        messages: current.map((m) => ({ ...m })),
+        hasMore: hasMoreRef.current,
+        total: totalRef.current,
+        firstItemIndex: firstItemIndexRef.current,
+      });
+      messagesRef.current = current;
+      return current;
+    });
+  }, []);
+
+  const hasDraft = useCallback((conversationId: number) => {
+    return draftsRef.current.has(conversationId);
+  }, []);
+
+  const restoreDraft = useCallback((conversationId: number): boolean => {
+    const draft = draftsRef.current.get(conversationId);
+    if (!draft) return false;
+    setMessages(draft.messages.map((m) => ({ ...m })));
+    setHasMore(draft.hasMore);
+    setTotal(draft.total);
+    setFirstItemIndex(draft.firstItemIndex);
+    setLoading(false);
+    return true;
+  }, []);
+
+  const clearDraft = useCallback((conversationId: number) => {
+    draftsRef.current.delete(conversationId);
+  }, []);
+
+  /** 更新后台流式会话草稿中的消息列表 */
+  const mutateDraftMessages = useCallback(
+    (conversationId: number, updater: (msgs: ChatMessage[]) => ChatMessage[]) => {
+      const draft = draftsRef.current.get(conversationId);
+      if (!draft) return;
+      draft.messages = updater(draft.messages);
+      draftsRef.current.set(conversationId, draft);
+    },
+    []
+  );
+
   return {
     messages,
     hasMore,
@@ -313,6 +404,7 @@ export function useChatMessages() {
     loadInitial,
     loadOlder,
     syncFromServer,
+    syncAfterStop,
     appendOptimistic,
     updateMessage,
     appendAgentStart,
@@ -322,5 +414,10 @@ export function useChatMessages() {
     completeToolCall,
     removeMessages,
     reset,
+    saveDraft,
+    hasDraft,
+    restoreDraft,
+    clearDraft,
+    mutateDraftMessages,
   };
 }

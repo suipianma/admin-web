@@ -41,6 +41,7 @@ export interface StreamChatOptions {
   onRagRetrieval?: (payload: { citations: RagCitation[] }) => void;
   promptId?: string;
   knowledgeBaseIds?: number[];
+  regenerate?: boolean;
 }
 
 function cleanText(text: string): string {
@@ -93,6 +94,7 @@ export function streamChat(
     onAgentDone,
     promptId,
     knowledgeBaseIds,
+    regenerate,
   }: StreamChatOptions
 ): () => void {
   const token = getToken();
@@ -102,6 +104,9 @@ export function streamChat(
   }
   if (knowledgeBaseIds?.length) {
     params.set("knowledgeBaseIds", knowledgeBaseIds.join(","));
+  }
+  if (regenerate) {
+    params.set("regenerate", "1");
   }
   // EventSource 无法带 Authorization header，token 放 query
   if (token) {
