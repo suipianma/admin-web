@@ -42,6 +42,8 @@ export type StreamEvent =
       conversationId: number;
       streamId: string;
       seq?: number;
+      requestId?: string;
+      assistantId: number;
     }
   | {
       type: "stream_done";

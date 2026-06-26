@@ -4,12 +4,15 @@ export interface ChatReplyResult {
   thinking: string;
   response: string;
   fromCache?: boolean;
+  promptTokens?: number;
+  completionTokens?: number;
 }
 
 export interface StreamToolCallPayload {
   tool: string;
   args: Record<string, string>;
   step?: number;
+  toolCallId?: string;
 }
 
 export interface StreamToolResultPayload {
@@ -17,6 +20,7 @@ export interface StreamToolResultPayload {
   result: string;
   error?: string;
   step?: number;
+  toolCallId?: string;
 }
 
 export interface StreamAgentStepPayload {
@@ -33,7 +37,11 @@ export interface StreamHandlers {
   onToolCall?: (payload: StreamToolCallPayload) => void;
   onToolResult?: (payload: StreamToolResultPayload) => void;
   onAgentStep?: (payload: StreamAgentStepPayload) => void;
-  onStreamMeta?: (meta: { streamId: string; seq?: number }) => void;
+  onStreamMeta?: (meta: {
+    streamId: string;
+    seq?: number;
+    requestId?: string;
+  }) => void;
   onStreamInterrupted?: (streamId: string) => void;
 }
 

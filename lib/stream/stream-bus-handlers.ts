@@ -28,8 +28,15 @@ export function createStreamBusHandlers(
     onAgentStep: (payload) => {
       bus.emit({ type: "agent_step", conversationId, assistantId, payload });
     },
-    onStreamMeta: ({ streamId, seq }) => {
-      bus.emit({ type: "stream_meta", conversationId, streamId, seq });
+    onStreamMeta: ({ streamId, seq, requestId }) => {
+      bus.emit({
+        type: "stream_meta",
+        conversationId,
+        assistantId,
+        streamId,
+        seq,
+        requestId,
+      });
     },
     onDone: () => {
       bus.emit({ type: "stream_done", conversationId });

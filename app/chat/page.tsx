@@ -10,7 +10,9 @@ import {
   SendOutlined,
   StopOutlined,
   ThunderboltOutlined,
+  RadarChartOutlined,
 } from "@ant-design/icons";
+import ChatObservabilityPanel from "@/components/chat/ChatObservabilityPanel";
 import ConversationSidebar from "@/components/ConversationSidebar";
 import ChatFullscreenButton from "@/components/chat/ChatFullscreenButton";
 import ChatMessageArea from "@/components/chat/ChatMessageArea";
@@ -78,6 +80,7 @@ export default function ChatPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [input, setInput] = useState("");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [obsPanelOpen, setObsPanelOpen] = useState(false);
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplateItem[]>(
     []
   );
@@ -795,6 +798,13 @@ export default function ChatPage() {
           isFullscreen={isFullscreen}
           onToggle={toggleFullscreen}
         />
+        <Button
+          type="text"
+          className="chat-mobile-menu-btn"
+          icon={<RadarChartOutlined />}
+          onClick={() => setObsPanelOpen(true)}
+          aria-label="打开 Observability 面板"
+        />
       </div>
 
       <div className="chat-layout">
@@ -850,8 +860,21 @@ export default function ChatPage() {
                 isFullscreen={isFullscreen}
                 onToggle={toggleFullscreen}
               />
+              <Button
+                size="small"
+                type="text"
+                icon={<RadarChartOutlined />}
+                onClick={() => setObsPanelOpen(true)}
+                aria-label="打开 Observability 面板"
+                title="Observability"
+              />
             </div>
           </header>
+
+          <ChatObservabilityPanel
+            open={obsPanelOpen}
+            onClose={() => setObsPanelOpen(false)}
+          />
 
           <div className="chat-panel">
             <div className="chat-body">

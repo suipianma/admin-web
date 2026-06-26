@@ -2675,3 +2675,63 @@ body {
   color: var(--color-text) !important;
   background: var(--color-bg-hover) !important;
 }
+
+/* Observability Debug Panel */
+.chat-observability-drawer .obs-panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.obs-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.obs-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.obs-section-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.obs-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.obs-event-log {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--color-bg-page) 92%, var(--color-border));
+}
+
+.obs-event-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed color-mix(in srgb, var(--color-border) 80%, transparent);
+}
+
+.obs-event-item:last-child {
+  border-bottom: none;
+}
+
+.obs-event-code {
+  font-size: 11px;
+  line-height: 1.45;
+  word-break: break-all;
+  color: var(--color-text-secondary);
+}

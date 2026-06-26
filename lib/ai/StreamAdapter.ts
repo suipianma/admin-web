@@ -32,6 +32,8 @@ function normalizeReply(raw: {
   response?: string;
   error?: string;
   fromCache?: boolean;
+  promptTokens?: number;
+  completionTokens?: number;
 }) {
   if (raw.error) {
     throw new Error(raw.error);
@@ -40,6 +42,8 @@ function normalizeReply(raw: {
     thinking: cleanText(raw.thinking ?? ""),
     response: cleanReplyText(raw.response ?? ""),
     fromCache: raw.fromCache,
+    promptTokens: raw.promptTokens,
+    completionTokens: raw.completionTokens,
   };
 }
 
@@ -103,12 +107,23 @@ export function createStreamAdapter({
         error?: string;
         done?: boolean;
         fromCache?: boolean;
-        phase?: "tool_call" | "tool_result";
+        promptTokens?: number;
+        completionTokens?: number;
+        phase?:
+          | "tool_call"
+          | "tool_result"
+          | "agent_start"
+          | "agent_step"
+          | "agent_done";
         tool?: string;
         args?: Record<string, string>;
         result?: string;
         step?: number;
+        maxSteps?: number;
+        steps?: number;
         streamId?: string;
+        requestId?: string;
+        toolCallId?: string;
         seq?: number;
         data?: Record<string, unknown>;
       };
@@ -119,7 +134,11 @@ export function createStreamAdapter({
 
       if (parsed.streamId) {
         streamId = parsed.streamId;
-        onStreamMeta?.({ streamId: parsed.streamId, seq: parsed.seq });
+        onStreamMeta?.({
+          streamId: parsed.streamId,
+          seq: parsed.seq,
+          requestId: parsed.requestId,
+        });
       }
 
       if (parsed.error) {
@@ -149,6 +168,7 @@ export function createStreamAdapter({
           tool: parsed.tool,
           args: parsed.args,
           step: parsed.step,
+          toolCallId: parsed.toolCallId,
         });
         return;
       }
@@ -159,6 +179,7 @@ export function createStreamAdapter({
           result: parsed.result,
           error: parsed.error,
           step: parsed.step,
+          toolCallId: parsed.toolCallId,
         });
         return;
       }
@@ -172,6 +193,8 @@ export function createStreamAdapter({
         thinking: accThinking,
         response: accResponse,
         fromCache: parsed.fromCache,
+        promptTokens: parsed.promptTokens,
+        completionTokens: parsed.completionTokens,
       });
 
       if (parsed.done && reply.fromCache) {
