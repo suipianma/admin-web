@@ -1,5 +1,12 @@
-import type { RagCitation } from "@/services/ai";
 import type { ToolCallItem } from "@/components/chat/ChatMessageItem";
+
+export interface RagCitationBlock {
+  chunkId: number;
+  documentName: string;
+  page?: number | null;
+  snippet: string;
+  score: number;
+}
 
 /** 行内节点（仅允许白名单格式，禁止原始 HTML） */
 export type InlineNode =
@@ -33,7 +40,7 @@ export type MessageBlock =
       result?: string;
       status: ToolCallItem["status"];
     }
-  | { type: "citation"; citations: RagCitation[] };
+  | { type: "citation"; citations: RagCitationBlock[] };
 
 export function toolCallsToBlocks(
   toolCalls: ToolCallItem[]
@@ -49,7 +56,7 @@ export function toolCallsToBlocks(
 }
 
 export function citationsToBlock(
-  citations: RagCitation[]
+  citations: RagCitationBlock[]
 ): Extract<MessageBlock, { type: "citation" }> | null {
   if (citations.length === 0) return null;
   return { type: "citation", citations };

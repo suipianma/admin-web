@@ -333,8 +333,7 @@ export default function ChatPage() {
 
         removeMessages([userMsgId, assistantId]);
 
-        const errMsg =
-          err instanceof ApiError ? err.displayMessage : err.message;
+        const errMsg = err.displayMessage;
         if (errMsg.includes("已达上限")) {
           message.warning(LIMIT_ERROR_MSG);
         } else {

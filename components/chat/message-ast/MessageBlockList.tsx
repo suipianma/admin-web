@@ -5,6 +5,7 @@ import { ToolOutlined, ReadOutlined } from "@ant-design/icons";
 import { Typography } from "antd";
 import type { MessageBlock } from "./types";
 import { renderInlineNodes } from "./renderInline";
+import LazyCodeBlock from "./LazyCodeBlock";
 
 interface MessageBlockListProps {
   blocks: MessageBlock[];
@@ -43,16 +44,7 @@ function CodeBlock({
 }: {
   block: Extract<MessageBlock, { type: "code" }>;
 }) {
-  return (
-    <div className="msg-ast-code-wrap">
-      {block.language && (
-        <div className="msg-ast-code-lang">{block.language}</div>
-      )}
-      <pre className="msg-ast-code">
-        <code>{block.value}</code>
-      </pre>
-    </div>
-  );
+  return <LazyCodeBlock language={block.language} value={block.value} />;
 }
 
 function TableBlock({
