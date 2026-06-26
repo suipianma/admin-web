@@ -24,6 +24,7 @@ import { useUserInfo } from "@/hooks/useUserInfo";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useStreamBuffer } from "@/hooks/useStreamBuffer";
 import { streamChat } from "@/services/ai";
+import { validateOutgoingMessage } from "@/lib/security/promptGuard";
 import { getPromptTemplates, type PromptTemplateItem } from "@/services/prompt";
 import {
   createConversation,
@@ -346,6 +347,12 @@ export default function ChatPage() {
   async function handleSend(text?: string) {
     const content = (text ?? input).trim();
     if (!content || streaming || activeConversationId == null) return;
+
+    const validation = validateOutgoingMessage(content);
+    if (!validation.ok) {
+      message.warning(validation.message ?? "消息不符合要求");
+      return;
+    }
 
     if (total >= 200) {
       message.warning(LIMIT_ERROR_MSG);
