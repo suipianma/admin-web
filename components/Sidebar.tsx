@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { Button } from "antd";
 import {
+  BookOutlined,
+  BulbOutlined,
   HomeOutlined,
   MessageOutlined,
   TeamOutlined,
@@ -15,7 +17,16 @@ const NAV_ICONS: Record<NavIconKey, React.ReactNode> = {
   home: <HomeOutlined />,
   users: <TeamOutlined />,
   chat: <MessageOutlined />,
+  knowledge: <BookOutlined />,
+  memory: <BulbOutlined />,
 };
+
+function isNavActive(pathname: string, href: string) {
+  if (href === "/dashboard") {
+    return pathname === href;
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 interface SidebarProps {
   pathname: string;
@@ -46,7 +57,7 @@ export default function Sidebar({
 
       <nav className="sidebar-nav">
         {visibleItems.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive = isNavActive(pathname, item.href);
 
           return (
             <Link
