@@ -38,17 +38,14 @@ import {
   updateConversation,
   type Conversation,
 } from "@/services/conversation";
-import { ApiError } from "@/utils/apiError";
 import { getUserInfo } from "@/utils/auth";
 import {
   clearActiveStream,
   loadActiveStream,
   saveActiveStream,
 } from "@/utils/streamSessionStorage";
-import {
-  resolveInitialConversationId,
-  setLastConversationId,
-} from "@/utils/chatStorage";
+import { useChatStreamBus } from "@/hooks/useChatStreamBus";
+import type { StreamMeta } from "@/lib/stream";
 
 const SUGGESTIONS = [
   { text: "你好，介绍一下自己", icon: <MessageOutlined /> },
@@ -56,13 +53,12 @@ const SUGGESTIONS = [
   { text: "帮我写一段登录接口示例", icon: <CodeOutlined /> },
 ];
 
-const LIMIT_ERROR_MSG = "会话消息已达上限，请新建会话";
+import {
+  resolveInitialConversationId,
+  setLastConversationId,
+} from "@/utils/chatStorage";
 
-interface StreamMeta {
-  assistantId: number;
-  userMsgId?: number;
-  buffer: { thinking: string; response: string; fromCache?: boolean };
-}
+const LIMIT_ERROR_MSG = "会话消息已达上限，请新建会话";
 
 function getUserAvatarText(username?: string) {
   if (!username) return "我";
@@ -201,28 +197,6 @@ export default function ChatPage() {
     assistantIdRef.current = meta.assistantId;
   }
 
-  function applyBackgroundStreamReply(
-    conversationId: number,
-    assistantId: number,
-    reply: { thinking: string; response: string; fromCache?: boolean }
-  ) {
-    const meta = streamMetaRef.current.get(conversationId);
-    if (meta) meta.buffer = reply;
-
-    mutateDraftMessages(conversationId, (msgs) =>
-      msgs.map((m) =>
-        m.id === assistantId
-          ? {
-              ...m,
-              thinking: reply.thinking ? reply.thinking : undefined,
-              content: reply.response,
-              fromCache: reply.fromCache,
-            }
-          : m
-      )
-    );
-  }
-
   /** 切换会话时断开 SSE，后台 detached 生成继续 */
   function detachStreamClient(conversationId: number) {
     streamStopsRef.current.get(conversationId)?.();
@@ -295,165 +269,28 @@ export default function ChatPage() {
     syncAfterStop,
   ]);
 
-  const createStreamHandlers = useCallback(
-    (
-      conversationId: number,
-      meta: StreamMeta,
-      options?: {
-        rollbackUserMsgId?: number;
-        rollbackAssistantId?: number;
-      }
-    ) => ({
-      onUpdate: (reply: {
-        thinking: string;
-        response: string;
-        fromCache?: boolean;
-      }) => {
-        meta.buffer = reply;
-        if (isViewingConversation(conversationId)) {
-          assistantIdRef.current = meta.assistantId;
-          pushStream(reply);
-          return;
-        }
-        applyBackgroundStreamReply(conversationId, meta.assistantId, reply);
-      },
-      onToolCall: ({
-        tool,
-        args,
-      }: {
-        tool: string;
-        args: Record<string, string>;
-      }) => {
-        if (!isViewingConversation(conversationId)) {
-          mutateDraftMessages(conversationId, (msgs) =>
-            msgs.map((m) => {
-              if (m.id !== meta.assistantId) return m;
-              const toolCalls = m.toolCalls ?? [];
-              return {
-                ...m,
-                toolCalls: [
-                  ...toolCalls,
-                  { tool, args, status: "calling" as const },
-                ],
-              };
-            })
-          );
-          return;
-        }
-        appendToolCall(meta.assistantId, tool, args);
-      },
-      onToolResult: ({
-        tool,
-        result,
-        error,
-      }: {
-        tool: string;
-        result: string;
-        error?: string;
-      }) => {
-        if (!isViewingConversation(conversationId)) {
-          mutateDraftMessages(conversationId, (msgs) =>
-            msgs.map((m) => {
-              if (m.id !== meta.assistantId) return m;
-              return {
-                ...m,
-                toolCalls: (m.toolCalls ?? []).map((item) =>
-                  item.tool === tool && item.status === "calling"
-                    ? {
-                        ...item,
-                        result,
-                        status: error
-                          ? ("error" as const)
-                          : ("done" as const),
-                      }
-                    : item
-                ),
-              };
-            })
-          );
-          return;
-        }
-        completeToolCall(meta.assistantId, tool, result, error);
-      },
-      onAgentStep: (payload: {
-        phase: "agent_start" | "agent_step" | "agent_done";
-        step?: number;
-        maxSteps?: number;
-        steps?: number;
-      }) => {
-        const item =
-          payload.phase === "agent_start"
-            ? { type: "start" as const, maxSteps: payload.maxSteps }
-            : payload.phase === "agent_step"
-              ? {
-                  type: "step" as const,
-                  step: payload.step,
-                  maxSteps: payload.maxSteps,
-                }
-              : { type: "done" as const, totalSteps: payload.steps };
-
-        if (!isViewingConversation(conversationId)) {
-          mutateDraftMessages(conversationId, (msgs) =>
-            msgs.map((m) =>
-              m.id === meta.assistantId
-                ? {
-                    ...m,
-                    agentSteps: [...(m.agentSteps ?? []), item],
-                  }
-                : m
-            )
-          );
-          return;
-        }
-        appendAgentStep(meta.assistantId, item);
-      },
-      onStreamMeta: ({ streamId }: { streamId: string }) => {
-        streamIdsRef.current.set(conversationId, streamId);
-        saveActiveStream(conversationId, streamId);
-      },
-      onDone: () => {
-        streamStopsRef.current.delete(conversationId);
-        finishStreamForConversation(conversationId);
-      },
-      onError: (err: ApiError) => {
-        streamStopsRef.current.delete(conversationId);
-        if (isViewingConversation(conversationId)) {
-          cancelStream();
-          resetStream();
-          const assistantId = options?.rollbackAssistantId;
-          const shouldRollback =
-            options?.rollbackUserMsgId != null && assistantId != null;
-          if (shouldRollback) {
-            removeMessages([options!.rollbackUserMsgId!, assistantId!]);
-          } else {
-            void syncFromServer(conversationId);
-          }
-        }
-        clearStreamingState(conversationId);
-
-        const errMsg = err.displayMessage;
-        if (errMsg.includes("已达上限")) {
-          message.warning(LIMIT_ERROR_MSG);
-        } else if (isViewingConversation(conversationId)) {
-          message.error(errMsg);
-        }
-      },
-    }),
-    [
-      appendAgentStep,
-      appendToolCall,
-      cancelStream,
-      completeToolCall,
-      flushNow,
-      message,
-      mutateDraftMessages,
-      pushStream,
-      refreshConversations,
-      removeMessages,
-      resetStream,
-      syncFromServer,
-    ]
-  );
+  const { createHandlers } = useChatStreamBus({
+    isViewingConversation,
+    streamMetaRef,
+    assistantIdRef,
+    streamIdsRef,
+    streamStopsRef,
+    pushStream,
+    mutateDraftMessages,
+    appendToolCall,
+    completeToolCall,
+    appendAgentStep,
+    flushNow,
+    clearStreamingState,
+    finishStreamForConversation,
+    cancelStream,
+    resetStream,
+    removeMessages,
+    syncFromServer,
+    saveActiveStream,
+    message,
+    limitErrorMsg: LIMIT_ERROR_MSG,
+  });
 
   const startStreamClient = useCallback(
     (
@@ -470,7 +307,18 @@ export default function ChatPage() {
     ) => {
       streamStopsRef.current.get(conversationId)?.();
 
-      const handlers = createStreamHandlers(conversationId, meta, options);
+      const handlers = createHandlers({
+        conversationId,
+        assistantId: meta.assistantId,
+        rollback:
+          options?.rollbackUserMsgId != null &&
+          options?.rollbackAssistantId != null
+            ? {
+                userMsgId: options.rollbackUserMsgId,
+                assistantId: options.rollbackAssistantId,
+              }
+            : undefined,
+      });
       const stop = options?.resumeStreamId
         ? resumeStreamChat(conversationId, options.resumeStreamId, handlers)
         : streamChat(conversationId, content, {
@@ -481,7 +329,7 @@ export default function ChatPage() {
 
       streamStopsRef.current.set(conversationId, stop);
     },
-    [createStreamHandlers]
+    [createHandlers]
   );
 
   const tryRecoverActiveStream = useCallback(
