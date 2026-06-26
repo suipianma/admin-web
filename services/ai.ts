@@ -12,36 +12,20 @@ export interface ChatReplyResult {
   fromCache?: boolean;
 }
 
-export interface RagCitation {
-  chunkId: number;
-  documentName: string;
-  page?: number | null;
-  snippet: string;
-  score: number;
-}
-
 export interface StreamChatOptions {
   onUpdate: (reply: ChatReplyResult) => void;
   onDone: () => void;
   onError: (error: Error) => void;
-  onAgentStart?: (payload: { maxSteps: number }) => void;
-  onAgentStep?: (payload: { step: number; maxSteps: number }) => void;
-  onAgentDone?: (payload: { steps: number }) => void;
   onToolCall?: (payload: {
     tool: string;
     args: Record<string, string>;
-    step?: number;
   }) => void;
   onToolResult?: (payload: {
     tool: string;
     result: string;
     error?: string;
-    step?: number;
   }) => void;
-  onRagRetrieval?: (payload: { citations: RagCitation[] }) => void;
   promptId?: string;
-  knowledgeBaseIds?: number[];
-  regenerate?: boolean;
 }
 
 function cleanText(text: string): string {
@@ -88,25 +72,13 @@ export function streamChat(
     onError,
     onToolCall,
     onToolResult,
-    onRagRetrieval,
-    onAgentStart,
-    onAgentStep,
-    onAgentDone,
     promptId,
-    knowledgeBaseIds,
-    regenerate,
   }: StreamChatOptions
 ): () => void {
   const token = getToken();
   const params = new URLSearchParams({ content });
   if (promptId) {
     params.set("promptId", promptId);
-  }
-  if (knowledgeBaseIds?.length) {
-    params.set("knowledgeBaseIds", knowledgeBaseIds.join(","));
-  }
-  if (regenerate) {
-    params.set("regenerate", "1");
   }
   // EventSource 无法带 Authorization header，token 放 query
   if (token) {
@@ -153,20 +125,10 @@ export function streamChat(
         error?: string;
         done?: boolean;
         fromCache?: boolean;
-        phase?:
-          | "agent_start"
-          | "agent_step"
-          | "agent_done"
-          | "tool_call"
-          | "tool_result"
-          | "rag_retrieval";
-        step?: number;
-        maxSteps?: number;
-        steps?: number;
+        phase?: "tool_call" | "tool_result";
         tool?: string;
         args?: Record<string, string>;
         result?: string;
-        citations?: RagCitation[];
         data?: {
           thinking?: string;
           response?: string;
@@ -175,20 +137,10 @@ export function streamChat(
           error?: string;
           done?: boolean;
           fromCache?: boolean;
-          phase?:
-          | "agent_start"
-          | "agent_step"
-          | "agent_done"
-          | "tool_call"
-          | "tool_result"
-          | "rag_retrieval";
-        step?: number;
-        maxSteps?: number;
-        steps?: number;
+          phase?: "tool_call" | "tool_result";
           tool?: string;
           args?: Record<string, string>;
           result?: string;
-          citations?: RagCitation[];
         };
       };
 
@@ -204,31 +156,8 @@ export function streamChat(
         return;
       }
 
-      if (parsed.phase === "agent_start" && parsed.maxSteps != null) {
-        onAgentStart?.({ maxSteps: parsed.maxSteps });
-        return;
-      }
-
-      if (
-        parsed.phase === "agent_step" &&
-        parsed.step != null &&
-        parsed.maxSteps != null
-      ) {
-        onAgentStep?.({ step: parsed.step, maxSteps: parsed.maxSteps });
-        return;
-      }
-
-      if (parsed.phase === "agent_done") {
-        onAgentDone?.({ steps: parsed.steps ?? 0 });
-        return;
-      }
-
       if (parsed.phase === "tool_call" && parsed.tool && parsed.args) {
-        onToolCall?.({
-          tool: parsed.tool,
-          args: parsed.args,
-          step: parsed.step,
-        });
+        onToolCall?.({ tool: parsed.tool, args: parsed.args });
         return;
       }
 
@@ -237,14 +166,6 @@ export function streamChat(
           tool: parsed.tool,
           result: parsed.result,
           error: parsed.error,
-          step: parsed.step,
-        });
-        return;
-      }
-
-      if (parsed.phase === "rag_retrieval") {
-        onRagRetrieval?.({
-          citations: Array.isArray(parsed.citations) ? parsed.citations : [],
         });
         return;
       }

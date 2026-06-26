@@ -1,35 +1,16 @@
 "use client";
 
 import { memo } from "react";
-import { Avatar, Button, Tooltip } from "antd";
-import {
-  BulbOutlined,
-  CopyOutlined,
-  RedoOutlined,
-  RobotOutlined,
-} from "@ant-design/icons";
+import { Avatar } from "antd";
+import { BulbOutlined, RobotOutlined } from "@ant-design/icons";
 import ChatMarkdown from "@/components/ChatMarkdown";
 import ToolCallBlock from "@/components/chat/ToolCallBlock";
-import AgentStepBlock from "@/components/chat/AgentStepBlock";
-import CitationBlock from "@/components/chat/CitationBlock";
-import type { RagCitation } from "@/services/ai";
 
 export interface ToolCallItem {
   tool: string;
   args: Record<string, string>;
   result?: string;
   status: "calling" | "done" | "error";
-}
-
-export interface AgentStepItem {
-  step: number;
-  type: "start" | "step" | "tool_call" | "tool_result" | "done";
-  tool?: string;
-  args?: Record<string, string>;
-  result?: string;
-  error?: string;
-  maxSteps?: number;
-  totalSteps?: number;
 }
 
 export interface ChatMessage {
@@ -39,8 +20,6 @@ export interface ChatMessage {
   thinking?: string;
   fromCache?: boolean;
   toolCalls?: ToolCallItem[];
-  agentSteps?: AgentStepItem[];
-  citations?: RagCitation[];
 }
 
 interface ChatMessageItemProps {
@@ -48,8 +27,6 @@ interface ChatMessageItemProps {
   isLast: boolean;
   isStreaming: boolean;
   userAvatarText: string;
-  onCopy?: (text: string) => void;
-  onRegenerate?: (msgId: number) => void;
 }
 
 function TypingIndicator() {
@@ -62,20 +39,11 @@ function TypingIndicator() {
   );
 }
 
-function getCopyText(msg: ChatMessage) {
-  const parts: string[] = [];
-  if (msg.thinking) parts.push(msg.thinking);
-  if (msg.content) parts.push(msg.content);
-  return parts.join("\n\n").trim();
-}
-
 function ChatMessageItem({
   msg,
   isLast,
   isStreaming,
   userAvatarText,
-  onCopy,
-  onRegenerate,
 }: ChatMessageItemProps) {
   const isUser = msg.role === "user";
   const isWaiting =
@@ -84,51 +52,13 @@ function ChatMessageItem({
     !isUser &&
     !msg.content &&
     !msg.thinking &&
-    !msg.toolCalls?.length &&
-    !msg.agentSteps?.length;
+    !msg.toolCalls?.length;
   const isStreamingMsg = isStreaming && isLast && !isUser;
-  const copyText = getCopyText(msg);
-  const canCopy = Boolean(copyText);
-  const canRegenerate =
-    !isUser && isLast && !isStreaming && onRegenerate;
-
-  function renderActions() {
-    if (!canCopy && !canRegenerate) return null;
-    return (
-      <div className="chat-msg-actions">
-        {canCopy && (
-          <Tooltip title="复制">
-            <Button
-              type="text"
-              size="small"
-              className="chat-msg-action-btn"
-              icon={<CopyOutlined />}
-              onClick={() => onCopy?.(copyText)}
-              aria-label="复制消息"
-            />
-          </Tooltip>
-        )}
-        {canRegenerate && (
-          <Tooltip title="重新生成">
-            <Button
-              type="text"
-              size="small"
-              className="chat-msg-action-btn"
-              icon={<RedoOutlined />}
-              onClick={() => onRegenerate?.(msg.id)}
-              aria-label="重新生成"
-            />
-          </Tooltip>
-        )}
-      </div>
-    );
-  }
 
   if (isUser) {
     return (
       <div className="chat-row chat-row-user">
         <div className="chat-row-main">
-          {renderActions()}
           <div className="chat-bubble chat-bubble-user">{msg.content}</div>
         </div>
         <Avatar className="chat-avatar chat-avatar-user" size={32}>
@@ -153,13 +83,11 @@ function ChatMessageItem({
             <span className="chat-streaming-tag">
               {msg.toolCalls?.some((t) => t.status === "calling")
                 ? "调用工具"
-                : msg.agentSteps?.length
-                  ? "Agent 推理"
-                  : msg.content
-                    ? "输出中"
-                    : msg.thinking
-                      ? "思考中"
-                      : "生成中"}
+                : msg.content
+                  ? "输出中"
+                  : msg.thinking
+                    ? "思考中"
+                    : "生成中"}
             </span>
           )}
         </div>
@@ -171,14 +99,8 @@ function ChatMessageItem({
             </div>
           ) : (
             <div className="chat-ai-content">
-              {msg.agentSteps && msg.agentSteps.length > 0 && (
-                <AgentStepBlock steps={msg.agentSteps} />
-              )}
               {msg.toolCalls && msg.toolCalls.length > 0 && (
                 <ToolCallBlock toolCalls={msg.toolCalls} />
-              )}
-              {msg.citations && msg.citations.length > 0 && (
-                <CitationBlock citations={msg.citations} />
               )}
               {msg.thinking && (
                 <details className="chat-thinking" open={isStreamingMsg}>
@@ -219,7 +141,6 @@ function ChatMessageItem({
             </div>
           )}
         </div>
-        {renderActions()}
       </div>
     </div>
   );
@@ -232,12 +153,8 @@ export default memo(ChatMessageItem, (prev, next) => {
     prev.msg.thinking === next.msg.thinking &&
     prev.msg.fromCache === next.msg.fromCache &&
     JSON.stringify(prev.msg.toolCalls) === JSON.stringify(next.msg.toolCalls) &&
-    JSON.stringify(prev.msg.agentSteps) === JSON.stringify(next.msg.agentSteps) &&
-    JSON.stringify(prev.msg.citations) === JSON.stringify(next.msg.citations) &&
     prev.isLast === next.isLast &&
     prev.isStreaming === next.isStreaming &&
-    prev.userAvatarText === next.userAvatarText &&
-    prev.onCopy === next.onCopy &&
-    prev.onRegenerate === next.onRegenerate
+    prev.userAvatarText === next.userAvatarText
   );
 });

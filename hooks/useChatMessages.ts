@@ -3,19 +3,11 @@ import {
   getConversationMessages,
   type ConversationMessage,
 } from "@/services/conversation";
-import type { RagCitation } from "@/services/ai";
 import type { ChatMessage } from "@/components/chat/ChatMessageItem";
 
 export const MESSAGE_PAGE_SIZE = 30;
 
 const INITIAL_FIRST_ITEM_INDEX = 100_000;
-
-export interface ConversationDraft {
-  messages: ChatMessage[];
-  hasMore: boolean;
-  total: number;
-  firstItemIndex: number;
-}
 
 interface MessagesPageResult {
   items: ConversationMessage[];
@@ -58,16 +50,6 @@ export function useChatMessages() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [firstItemIndex, setFirstItemIndex] = useState(INITIAL_FIRST_ITEM_INDEX);
   const tempIdRef = useRef(0);
-  const draftsRef = useRef<Map<number, ConversationDraft>>(new Map());
-  const messagesRef = useRef(messages);
-  const hasMoreRef = useRef(hasMore);
-  const totalRef = useRef(total);
-  const firstItemIndexRef = useRef(firstItemIndex);
-
-  messagesRef.current = messages;
-  hasMoreRef.current = hasMore;
-  totalRef.current = total;
-  firstItemIndexRef.current = firstItemIndex;
 
   const reset = useCallback(() => {
     setMessages([]);
@@ -144,40 +126,12 @@ export function useChatMessages() {
     setTotal(page.total);
   }, []);
 
-  /** 停止生成后同步：对齐服务端 user 消息，保留未落库的 assistant 草稿 */
-  const syncAfterStop = useCallback(async (conversationId: number) => {
-    const res = await getConversationMessages(conversationId, {
-      limit: MESSAGE_PAGE_SIZE,
-    });
-    const page = normalizePage(res.data);
-    const serverItems = page.items.map(mapMessage);
-
-    setMessages((prev) => {
-      const pendingAssistant = [...prev]
-        .reverse()
-        .find((m) => m.id < 0 && m.role === "assistant");
-      const merged = new Map(serverItems.map((m) => [m.id, m]));
-      if (pendingAssistant) {
-        merged.set(pendingAssistant.id, pendingAssistant);
-      }
-      const next = Array.from(merged.values()).sort((a, b) => a.id - b.id);
-      messagesRef.current = next;
-      return next;
-    });
-    setHasMore(page.hasMore);
-    setTotal(page.total);
-  }, []);
-
   const appendOptimistic = useCallback(
     (role: ChatMessage["role"], content: string, thinking?: string) => {
       tempIdRef.current -= 1;
       const id = tempIdRef.current;
       const msg: ChatMessage = { id, role, content, thinking };
-      setMessages((prev) => {
-        const next = [...prev, msg];
-        messagesRef.current = next;
-        return next;
-      });
+      setMessages((prev) => [...prev, msg]);
       return id;
     },
     []
@@ -191,12 +145,10 @@ export function useChatMessages() {
         thinking?: string;
         fromCache?: boolean;
         toolCalls?: ChatMessage["toolCalls"];
-        agentSteps?: ChatMessage["agentSteps"];
-        citations?: RagCitation[];
       }
     ) => {
-      setMessages((prev) => {
-        const next = prev.map((msg) => {
+      setMessages((prev) =>
+        prev.map((msg) => {
           if (msg.id !== id) return msg;
           return {
             ...msg,
@@ -212,47 +164,6 @@ export function useChatMessages() {
             ...(payload.toolCalls !== undefined
               ? { toolCalls: payload.toolCalls }
               : {}),
-            ...(payload.agentSteps !== undefined
-              ? { agentSteps: payload.agentSteps }
-              : {}),
-            ...(payload.citations !== undefined
-              ? { citations: payload.citations }
-              : {}),
-          };
-        });
-        messagesRef.current = next;
-        return next;
-      });
-    },
-    []
-  );
-
-  const appendAgentStart = useCallback((id: number, maxSteps: number) => {
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.id !== id) return msg;
-        return {
-          ...msg,
-          agentSteps: [
-            ...(msg.agentSteps ?? []),
-            { step: 0, type: "start" as const, maxSteps },
-          ],
-        };
-      })
-    );
-  }, []);
-
-  const appendAgentStep = useCallback(
-    (id: number, step: number, maxSteps: number) => {
-      setMessages((prev) =>
-        prev.map((msg) => {
-          if (msg.id !== id) return msg;
-          return {
-            ...msg,
-            agentSteps: [
-              ...(msg.agentSteps ?? []),
-              { step, type: "step" as const, maxSteps },
-            ],
           };
         })
       );
@@ -260,42 +171,15 @@ export function useChatMessages() {
     []
   );
 
-  const finishAgent = useCallback((id: number, totalSteps: number) => {
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.id !== id) return msg;
-        return {
-          ...msg,
-          agentSteps: [
-            ...(msg.agentSteps ?? []),
-            { step: totalSteps, type: "done" as const, totalSteps },
-          ],
-        };
-      })
-    );
-  }, []);
-
   const appendToolCall = useCallback(
-    (
-      id: number,
-      tool: string,
-      args: Record<string, string>,
-      step?: number
-    ) => {
+    (id: number, tool: string, args: Record<string, string>) => {
       setMessages((prev) =>
         prev.map((msg) => {
           if (msg.id !== id) return msg;
           const toolCalls = msg.toolCalls ?? [];
-          const agentSteps = msg.agentSteps ?? [];
           return {
             ...msg,
             toolCalls: [...toolCalls, { tool, args, status: "calling" as const }],
-            agentSteps: step
-              ? [
-                  ...agentSteps,
-                  { step, type: "tool_call" as const, tool, args },
-                ]
-              : agentSteps,
           };
         })
       );
@@ -308,13 +192,11 @@ export function useChatMessages() {
       id: number,
       tool: string,
       result: string,
-      error?: string,
-      step?: number
+      error?: string
     ) => {
       setMessages((prev) =>
         prev.map((msg) => {
           if (msg.id !== id) return msg;
-          const agentSteps = msg.agentSteps ?? [];
           return {
             ...msg,
             toolCalls: (msg.toolCalls ?? []).map((item) =>
@@ -326,18 +208,6 @@ export function useChatMessages() {
                   }
                 : item
             ),
-            agentSteps: step
-              ? [
-                  ...agentSteps,
-                  {
-                    step,
-                    type: "tool_result" as const,
-                    tool,
-                    result,
-                    error,
-                  },
-                ]
-              : agentSteps,
           };
         })
       );
@@ -350,50 +220,6 @@ export function useChatMessages() {
     setMessages((prev) => prev.filter((m) => !idSet.has(m.id)));
   }, []);
 
-  /** 将当前展示的消息快照存为流式草稿（切换会话时保留生成进度） */
-  const saveDraft = useCallback((conversationId: number) => {
-    setMessages((current) => {
-      draftsRef.current.set(conversationId, {
-        messages: current.map((m) => ({ ...m })),
-        hasMore: hasMoreRef.current,
-        total: totalRef.current,
-        firstItemIndex: firstItemIndexRef.current,
-      });
-      messagesRef.current = current;
-      return current;
-    });
-  }, []);
-
-  const hasDraft = useCallback((conversationId: number) => {
-    return draftsRef.current.has(conversationId);
-  }, []);
-
-  const restoreDraft = useCallback((conversationId: number): boolean => {
-    const draft = draftsRef.current.get(conversationId);
-    if (!draft) return false;
-    setMessages(draft.messages.map((m) => ({ ...m })));
-    setHasMore(draft.hasMore);
-    setTotal(draft.total);
-    setFirstItemIndex(draft.firstItemIndex);
-    setLoading(false);
-    return true;
-  }, []);
-
-  const clearDraft = useCallback((conversationId: number) => {
-    draftsRef.current.delete(conversationId);
-  }, []);
-
-  /** 更新后台流式会话草稿中的消息列表 */
-  const mutateDraftMessages = useCallback(
-    (conversationId: number, updater: (msgs: ChatMessage[]) => ChatMessage[]) => {
-      const draft = draftsRef.current.get(conversationId);
-      if (!draft) return;
-      draft.messages = updater(draft.messages);
-      draftsRef.current.set(conversationId, draft);
-    },
-    []
-  );
-
   return {
     messages,
     hasMore,
@@ -404,20 +230,11 @@ export function useChatMessages() {
     loadInitial,
     loadOlder,
     syncFromServer,
-    syncAfterStop,
     appendOptimistic,
     updateMessage,
-    appendAgentStart,
-    appendAgentStep,
-    finishAgent,
     appendToolCall,
     completeToolCall,
     removeMessages,
     reset,
-    saveDraft,
-    hasDraft,
-    restoreDraft,
-    clearDraft,
-    mutateDraftMessages,
   };
 }

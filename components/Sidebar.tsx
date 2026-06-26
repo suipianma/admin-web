@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Button } from "antd";
 import {
-  BookOutlined,
   HomeOutlined,
   MessageOutlined,
   TeamOutlined,
@@ -16,7 +15,6 @@ const NAV_ICONS: Record<NavIconKey, React.ReactNode> = {
   home: <HomeOutlined />,
   users: <TeamOutlined />,
   chat: <MessageOutlined />,
-  book: <BookOutlined />,
 };
 
 interface SidebarProps {

@@ -15,8 +15,6 @@ interface ChatMessageAreaProps {
   hasMore: boolean;
   userAvatarText: string;
   onLoadOlder: () => void;
-  onCopy?: (text: string) => void;
-  onRegenerate?: (msgId: number) => void;
 }
 
 export default function ChatMessageArea({
@@ -27,8 +25,6 @@ export default function ChatMessageArea({
   hasMore,
   userAvatarText,
   onLoadOlder,
-  onCopy,
-  onRegenerate,
 }: ChatMessageAreaProps) {
   const scrollApiRef = useRef<ChatMessageScrollApi | null>(null);
   const [activeNavId, setActiveNavId] = useState<number | null>(null);
@@ -63,8 +59,6 @@ export default function ChatMessageArea({
         userAvatarText={userAvatarText}
         scrollApiRef={scrollApiRef}
         onLoadOlder={onLoadOlder}
-        onCopy={onCopy}
-        onRegenerate={onRegenerate}
         onActiveNavChange={handleActiveNavChange}
         onAtBottomChange={handleAtBottomChange}
       />

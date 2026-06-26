@@ -8,13 +8,11 @@ import {
   MessageOutlined,
   RobotOutlined,
   SendOutlined,
-  StopOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import ConversationSidebar from "@/components/ConversationSidebar";
 import ChatFullscreenButton from "@/components/chat/ChatFullscreenButton";
 import ChatMessageArea from "@/components/chat/ChatMessageArea";
-import KnowledgeBasePicker from "@/components/chat/KnowledgeBasePicker";
 import {
   PromptTemplateChip,
   PromptTemplateMenu,
@@ -25,12 +23,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserInfo } from "@/hooks/useUserInfo";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useStreamBuffer } from "@/hooks/useStreamBuffer";
-import { streamChat, type RagCitation } from "@/services/ai";
-import { getKnowledgeBases, type KnowledgeBase } from "@/services/knowledge-base";
+import { streamChat } from "@/services/ai";
 import { getPromptTemplates, type PromptTemplateItem } from "@/services/prompt";
 import {
   createConversation,
-  deleteAllConversations,
   deleteConversation,
   getConversations,
   updateConversation,
@@ -51,25 +47,9 @@ const SUGGESTIONS = [
 
 const LIMIT_ERROR_MSG = "会话消息已达上限，请新建会话";
 
-interface StreamMeta {
-  assistantId: number;
-  userMsgId?: number;
-  buffer: { thinking: string; response: string; fromCache?: boolean };
-}
-
 function getUserAvatarText(username?: string) {
   if (!username) return "我";
   return username.slice(0, 1).toUpperCase();
-}
-
-function normalizeRagCitations(citations: RagCitation[]) {
-  return citations.filter(
-    (item) =>
-      typeof item.chunkId === "number" &&
-      typeof item.documentName === "string" &&
-      typeof item.score === "number" &&
-      typeof item.snippet === "string"
-  );
 }
 
 export default function ChatPage() {
@@ -84,31 +64,18 @@ export default function ChatPage() {
   const [convLoading, setConvLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [input, setInput] = useState("");
+  const [streaming, setStreaming] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplateItem[]>(
     []
   );
   const [selectedPrompt, setSelectedPrompt] =
     useState<PromptTemplateItem | null>(null);
-  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
-  const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<number[]>(
-    []
-  );
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const streamStopsRef = useRef<Map<number, () => void>>(new Map());
+  const stopStreamRef = useRef<(() => void) | null>(null);
   const initDoneRef = useRef(false);
   const assistantIdRef = useRef<number | null>(null);
-  const activeConversationIdRef = useRef<number | null>(null);
-  const streamingConversationIdRef = useRef<number | null>(null);
-  const streamMetaRef = useRef<Map<number, StreamMeta>>(new Map());
-  const [streamingConversationIds, setStreamingConversationIds] = useState<
-    Set<number>
-  >(() => new Set());
-
-  useEffect(() => {
-    activeConversationIdRef.current = activeConversationId;
-  }, [activeConversationId]);
 
   const {
     messages,
@@ -120,21 +87,12 @@ export default function ChatPage() {
     loadInitial,
     loadOlder,
     syncFromServer,
-    syncAfterStop,
     appendOptimistic,
     updateMessage,
-    appendAgentStart,
-    appendAgentStep,
-    finishAgent,
     appendToolCall,
     completeToolCall,
     removeMessages,
     reset: resetMessages,
-    saveDraft,
-    hasDraft,
-    restoreDraft,
-    clearDraft,
-    mutateDraftMessages,
   } = useChatMessages();
 
   const refreshConversations = useCallback(
@@ -195,16 +153,7 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    getKnowledgeBases()
-      .then((res) => setKnowledgeBases(res.data))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      streamStopsRef.current.forEach((stop) => stop());
-      streamStopsRef.current.clear();
-    };
+    return () => stopStreamRef.current?.();
   }, []);
 
   // 选中模板后聚焦输入框
@@ -221,10 +170,6 @@ export default function ChatPage() {
     if (userId != null) {
       setLastConversationId(userId, activeConversationId);
     }
-  }, [activeConversationId]);
-
-  useEffect(() => {
-    setSelectedKnowledgeBaseIds([]);
   }, [activeConversationId]);
 
   // 全屏模式：锁定页面滚动，Esc 退出
@@ -256,14 +201,7 @@ export default function ChatPage() {
   const handleStreamFlush = useCallback(
     (reply: { thinking: string; response: string; fromCache?: boolean }) => {
       const assistantId = assistantIdRef.current;
-      const streamConvId = streamingConversationIdRef.current;
-      if (
-        assistantId == null ||
-        streamConvId == null ||
-        activeConversationIdRef.current !== streamConvId
-      ) {
-        return;
-      }
+      if (assistantId == null) return;
       updateMessage(assistantId, {
         thinking: reply.thinking ? reply.thinking : undefined,
         content: reply.response,
@@ -276,120 +214,17 @@ export default function ChatPage() {
   const { push: pushStream, flushNow, reset: resetStream, cancel: cancelStream } =
     useStreamBuffer(handleStreamFlush);
 
-  function markConversationStreaming(conversationId: number, streaming: boolean) {
-    setStreamingConversationIds((prev) => {
-      const next = new Set(prev);
-      if (streaming) next.add(conversationId);
-      else next.delete(conversationId);
-      return next;
-    });
-  }
-
-  function clearStreamingState(conversationId: number) {
-    streamStopsRef.current.delete(conversationId);
-    markConversationStreaming(conversationId, false);
-    streamMetaRef.current.delete(conversationId);
-    clearDraft(conversationId);
-    if (streamingConversationIdRef.current === conversationId) {
-      streamingConversationIdRef.current = null;
-      assistantIdRef.current = null;
-    }
-  }
-
-  function attachStreamRefs(conversationId: number) {
-    const meta = streamMetaRef.current.get(conversationId);
-    if (!meta) return;
-    assistantIdRef.current = meta.assistantId;
-    streamingConversationIdRef.current = conversationId;
-  }
-
-  function applyBackgroundStreamReply(
-    conversationId: number,
-    assistantId: number,
-    reply: { thinking: string; response: string; fromCache?: boolean }
-  ) {
-    const meta = streamMetaRef.current.get(conversationId);
-    if (meta) meta.buffer = reply;
-
-    mutateDraftMessages(conversationId, (msgs) =>
-      msgs.map((m) =>
-        m.id === assistantId
-          ? {
-              ...m,
-              thinking: reply.thinking ? reply.thinking : undefined,
-              content: reply.response,
-              fromCache: reply.fromCache,
-            }
-          : m
-      )
-    );
-  }
-
-  function isViewingConversation(conversationId: number) {
-    return activeConversationIdRef.current === conversationId;
-  }
-
-  function handleStopGeneration() {
-    const convId = activeConversationId;
-    if (convId == null || !streamingConversationIds.has(convId)) return;
-
-    streamStopsRef.current.get(convId)?.();
-    streamStopsRef.current.delete(convId);
-    flushNow();
-    clearStreamingState(convId);
-
-    void syncAfterStop(convId).then(() => {
-      void refreshConversations(convId);
-    });
-  }
-
-  /** 停止后未完成的 AI 回复（临时 id） */
-  function getStoppedAssistantMessage() {
-    const last = messages[messages.length - 1];
-    if (last?.role === "assistant" && last.id < 0) return last;
-    return null;
-  }
-
-  function handleRegenerateFromUser(
-    userMsg: (typeof messages)[number],
-    assistantMsgId?: number
-  ) {
-    if (activeConversationId == null) return;
-    if (streamingConversationIds.has(activeConversationId)) return;
-
-    if (assistantMsgId != null) {
-      removeMessages([assistantMsgId]);
-    }
-
-    doSend(userMsg.content, activeConversationId, undefined, selectedKnowledgeBaseIds, {
-      regenerate: true,
-    });
-  }
-
   async function handleSelectConversation(id: number) {
-    if (id === activeConversationId) return;
-
-    const leavingId = activeConversationId;
-    if (leavingId != null && streamingConversationIds.has(leavingId)) {
-      saveDraft(leavingId);
-    }
-
+    if (streaming || id === activeConversationId) return;
     setActiveConversationId(id);
     setInput("");
     setSelectedPrompt(null);
-    setSelectedKnowledgeBaseIds([]);
     setDrawerOpen(false);
-
-    if (streamingConversationIds.has(id) && hasDraft(id)) {
-      restoreDraft(id);
-      attachStreamRefs(id);
-      return;
-    }
-
     await loadInitial(id);
   }
 
   async function handleCreateConversation() {
+    if (streaming) return;
     try {
       const res = await createConversation();
       setConversations((prev) => [res.data, ...prev]);
@@ -397,7 +232,6 @@ export default function ChatPage() {
       resetMessages();
       setInput("");
       setSelectedPrompt(null);
-      setSelectedKnowledgeBaseIds([]);
       setDrawerOpen(false);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "新建会话失败");
@@ -417,14 +251,10 @@ export default function ChatPage() {
   }
 
   async function handleDeleteConversation(id: number) {
-    if (streamingConversationIds.has(id)) {
-      streamStopsRef.current.get(id)?.();
-      streamStopsRef.current.delete(id);
-      markConversationStreaming(id, false);
-      streamMetaRef.current.delete(id);
-      clearDraft(id);
+    if (streaming) {
+      message.warning("正在生成回复，请稍后再删除");
+      return;
     }
-
     try {
       await deleteConversation(id);
       const remaining = conversations.filter((c) => c.id !== id);
@@ -451,55 +281,6 @@ export default function ChatPage() {
     }
   }
 
-  async function handleDeleteAllConversations() {
-    streamStopsRef.current.forEach((stop) => stop());
-    streamStopsRef.current.clear();
-    setStreamingConversationIds(new Set());
-    streamingConversationIdRef.current = null;
-    assistantIdRef.current = null;
-    streamMetaRef.current.clear();
-
-    try {
-      await deleteAllConversations();
-      const created = await createConversation();
-      setConversations([created.data]);
-      setActiveConversationId(created.data.id);
-      resetMessages();
-      setInput("");
-      setSelectedPrompt(null);
-      setSelectedKnowledgeBaseIds([]);
-      setDrawerOpen(false);
-      message.success("已清空全部会话");
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : "删除全部会话失败");
-    }
-  }
-
-  async function handleCopyMessage(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      message.success("已复制");
-    } catch {
-      message.error("复制失败");
-    }
-  }
-
-  function handleRegenerateMessage(assistantMsgId: number) {
-    if (
-      activeConversationId == null ||
-      streamingConversationIds.has(activeConversationId)
-    ) {
-      return;
-    }
-
-    const idx = messages.findIndex((m) => m.id === assistantMsgId);
-    if (idx <= 0) return;
-    const userMsg = messages[idx - 1];
-    if (userMsg.role !== "user") return;
-
-    handleRegenerateFromUser(userMsg, assistantMsgId);
-  }
-
   function handlePromptSelect(item: PromptTemplateItem) {
     setSelectedPrompt((prev) => toggleTemplate(prev, item));
   }
@@ -507,204 +288,50 @@ export default function ChatPage() {
   function doSend(
     content: string,
     conversationId: number,
-    promptId?: string,
-    knowledgeBaseIds?: number[],
-    options?: { regenerate?: boolean }
+    promptId?: string
   ) {
-    const isRegenerate = options?.regenerate === true;
+    setInput("");
+    if (inputRef.current) inputRef.current.style.height = "auto";
 
-    if (!isRegenerate) {
-      setInput("");
-      if (inputRef.current) inputRef.current.style.height = "auto";
-    }
-
-    let userMsgId: number | null = null;
-    if (!isRegenerate) {
-      userMsgId = appendOptimistic("user", content);
-    }
-
+    const userMsgId = appendOptimistic("user", content);
     const assistantId = appendOptimistic("assistant", "");
-    streamMetaRef.current.set(conversationId, {
-      assistantId,
-      userMsgId: userMsgId ?? undefined,
-      buffer: { thinking: "", response: "" },
-    });
-    markConversationStreaming(conversationId, true);
+    assistantIdRef.current = assistantId;
+    setStreaming(true);
     resetStream();
 
-    // 同一会话重复发送时，先中断上一次流
-    streamStopsRef.current.get(conversationId)?.();
+    stopStreamRef.current?.();
 
-    const stop = streamChat(conversationId, content, {
+    stopStreamRef.current = streamChat(conversationId, content, {
       promptId,
-      knowledgeBaseIds,
-      regenerate: isRegenerate,
-      onUpdate: (reply) => {
-        if (isViewingConversation(conversationId)) {
-          assistantIdRef.current = assistantId;
-          streamingConversationIdRef.current = conversationId;
-          pushStream(reply);
-          return;
-        }
-        applyBackgroundStreamReply(conversationId, assistantId, reply);
+      onUpdate: (reply) => pushStream(reply),
+      onToolCall: ({ tool, args }) => {
+        const assistantId = assistantIdRef.current;
+        if (assistantId == null) return;
+        appendToolCall(assistantId, tool, args);
       },
-      onAgentStart: ({ maxSteps }) => {
-        if (isViewingConversation(conversationId)) {
-          appendAgentStart(assistantId, maxSteps);
-          return;
-        }
-        mutateDraftMessages(conversationId, (msgs) =>
-          msgs.map((msg) =>
-            msg.id === assistantId
-              ? {
-                  ...msg,
-                  agentSteps: [
-                    ...(msg.agentSteps ?? []),
-                    { step: 0, type: "start" as const, maxSteps },
-                  ],
-                }
-              : msg
-          )
-        );
-      },
-      onAgentStep: ({ step, maxSteps }) => {
-        if (isViewingConversation(conversationId)) {
-          appendAgentStep(assistantId, step, maxSteps);
-          return;
-        }
-        mutateDraftMessages(conversationId, (msgs) =>
-          msgs.map((msg) =>
-            msg.id === assistantId
-              ? {
-                  ...msg,
-                  agentSteps: [
-                    ...(msg.agentSteps ?? []),
-                    { step, type: "step" as const, maxSteps },
-                  ],
-                }
-              : msg
-          )
-        );
-      },
-      onAgentDone: ({ steps }) => {
-        if (isViewingConversation(conversationId)) {
-          finishAgent(assistantId, steps);
-          return;
-        }
-        mutateDraftMessages(conversationId, (msgs) =>
-          msgs.map((msg) =>
-            msg.id === assistantId
-              ? {
-                  ...msg,
-                  agentSteps: [
-                    ...(msg.agentSteps ?? []),
-                    { step: steps, type: "done" as const, totalSteps: steps },
-                  ],
-                }
-              : msg
-          )
-        );
-      },
-      onToolCall: ({ tool, args, step }) => {
-        if (isViewingConversation(conversationId)) {
-          appendToolCall(assistantId, tool, args, step);
-          return;
-        }
-        mutateDraftMessages(conversationId, (msgs) =>
-          msgs.map((msg) => {
-            if (msg.id !== assistantId) return msg;
-            const toolCalls = msg.toolCalls ?? [];
-            const agentSteps = msg.agentSteps ?? [];
-            return {
-              ...msg,
-              toolCalls: [
-                ...toolCalls,
-                { tool, args, status: "calling" as const },
-              ],
-              agentSteps: step
-                ? [
-                    ...agentSteps,
-                    { step, type: "tool_call" as const, tool, args },
-                  ]
-                : agentSteps,
-            };
-          })
-        );
-      },
-      onRagRetrieval: ({ citations }) => {
-        const normalized = normalizeRagCitations(citations);
-        if (isViewingConversation(conversationId)) {
-          updateMessage(assistantId, { citations: normalized });
-          return;
-        }
-        mutateDraftMessages(conversationId, (msgs) =>
-          msgs.map((msg) =>
-            msg.id === assistantId ? { ...msg, citations: normalized } : msg
-          )
-        );
-      },
-      onToolResult: ({ tool, result, error, step }) => {
-        if (isViewingConversation(conversationId)) {
-          completeToolCall(assistantId, tool, result, error, step);
-          return;
-        }
-        mutateDraftMessages(conversationId, (msgs) =>
-          msgs.map((msg) => {
-            if (msg.id !== assistantId) return msg;
-            const agentSteps = msg.agentSteps ?? [];
-            return {
-              ...msg,
-              toolCalls: (msg.toolCalls ?? []).map((item) =>
-                item.tool === tool && item.status === "calling"
-                  ? {
-                      ...item,
-                      result,
-                      status: error ? ("error" as const) : ("done" as const),
-                    }
-                  : item
-              ),
-              agentSteps: step
-                ? [
-                    ...agentSteps,
-                    {
-                      step,
-                      type: "tool_result" as const,
-                      tool,
-                      result,
-                      error,
-                    },
-                  ]
-                : agentSteps,
-            };
-          })
-        );
+      onToolResult: ({ tool, result, error }) => {
+        const assistantId = assistantIdRef.current;
+        if (assistantId == null) return;
+        completeToolCall(assistantId, tool, result, error);
       },
       onDone: () => {
-        streamStopsRef.current.delete(conversationId);
-        if (isViewingConversation(conversationId)) {
-          flushNow();
-        }
-        clearStreamingState(conversationId);
+        flushNow();
+        setStreaming(false);
+        stopStreamRef.current = null;
+        assistantIdRef.current = null;
 
-        if (isViewingConversation(conversationId)) {
-          void syncFromServer(conversationId).then(() => {
-            void refreshConversations(conversationId);
-          });
-        } else {
-          void refreshConversations();
-        }
+        void syncFromServer(conversationId).then(() => {
+          void refreshConversations(conversationId);
+        });
       },
       onError: (err) => {
-        streamStopsRef.current.delete(conversationId);
-        if (isViewingConversation(conversationId)) {
-          cancelStream();
-          resetStream();
-          const idsToRemove = isRegenerate
-            ? [assistantId]
-            : [userMsgId!, assistantId];
-          removeMessages(idsToRemove);
-        }
-        clearStreamingState(conversationId);
+        cancelStream();
+        resetStream();
+        setStreaming(false);
+        stopStreamRef.current = null;
+        assistantIdRef.current = null;
+
+        removeMessages([userMsgId, assistantId]);
 
         const errMsg =
           err instanceof ApiError ? err.displayMessage : err.message;
@@ -715,49 +342,19 @@ export default function ChatPage() {
         }
       },
     });
-    streamStopsRef.current.set(conversationId, stop);
   }
 
   async function handleSend(text?: string) {
     const content = (text ?? input).trim();
-    if (
-      !content ||
-      activeConversationId == null ||
-      streamingConversationIds.has(activeConversationId)
-    ) {
-      return;
-    }
+    if (!content || streaming || activeConversationId == null) return;
 
     if (total >= 200) {
       message.warning(LIMIT_ERROR_MSG);
       return;
     }
 
-    // 停止后再次发送：编辑问题并重新生成，不新增 user 消息
-    const stoppedAssistant = getStoppedAssistantMessage();
-    if (stoppedAssistant) {
-      const userMsg = messages[messages.length - 2];
-      if (!userMsg || userMsg.role !== "user") return;
-
-      setInput("");
-      if (inputRef.current) inputRef.current.style.height = "auto";
-
-      if (content !== userMsg.content) {
-        updateMessage(userMsg.id, { content });
-      }
-      removeMessages([stoppedAssistant.id]);
-      doSend(content, activeConversationId, selectedPrompt?.id, selectedKnowledgeBaseIds, {
-        regenerate: true,
-      });
-      return;
-    }
-
-    await doSend(
-      content,
-      activeConversationId,
-      selectedPrompt?.id,
-      selectedKnowledgeBaseIds
-    );
+    // 选中模板则本次发送带 promptId，未选中则普通对话
+    await doSend(content, activeConversationId, selectedPrompt?.id);
   }
 
   function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -773,20 +370,15 @@ export default function ChatPage() {
     }
   }
 
-  const isActiveConvStreaming =
-    activeConversationId != null &&
-    streamingConversationIds.has(activeConversationId);
-
   const sidebarProps = {
     conversations,
     activeId: activeConversationId,
     loading: convLoading,
-    streamingIds: [...streamingConversationIds],
+    disabled: streaming,
     onSelect: handleSelectConversation,
     onCreate: handleCreateConversation,
     onRename: handleRenameConversation,
     onDelete: handleDeleteConversation,
-    onDeleteAll: handleDeleteAllConversations,
   };
 
   const activeTitle =
@@ -804,14 +396,13 @@ export default function ChatPage() {
           type="text"
           className="chat-mobile-menu-btn"
           icon={<MenuOutlined />}
+          disabled={streaming}
           onClick={() => setDrawerOpen(true)}
           aria-label="打开会话列表"
         />
         <div className="chat-mobile-header-main">
           <span className="chat-mobile-title">{activeTitle}</span>
-          {isActiveConvStreaming && (
-            <span className="chat-status-pill">生成中</span>
-          )}
+          {streaming && <span className="chat-status-pill">生成中</span>}
         </div>
         <ChatFullscreenButton
           isFullscreen={isFullscreen}
@@ -844,7 +435,7 @@ export default function ChatPage() {
               <div className="chat-panel-titles">
                 <h1 className="chat-panel-title">{activeTitle}</h1>
                 <p className="chat-panel-subtitle">
-                  {isActiveConvStreaming
+                  {streaming
                     ? "AI 正在回复..."
                     : messages.length > 0
                       ? `共 ${total} 条消息`
@@ -853,7 +444,7 @@ export default function ChatPage() {
               </div>
             </div>
             <div className="chat-panel-header-actions">
-              {isActiveConvStreaming && (
+              {streaming && (
                 <span className="chat-status-pill chat-status-pill--desktop">
                   生成中
                 </span>
@@ -894,9 +485,7 @@ export default function ChatPage() {
                             key={item.text}
                             type="button"
                             className="chat-suggestion-btn"
-                            disabled={
-                              isActiveConvStreaming || activeConversationId == null
-                            }
+                            disabled={streaming || activeConversationId == null}
                             onClick={() => handleSend(item.text)}
                           >
                             <span className="chat-suggestion-icon">
@@ -912,19 +501,9 @@ export default function ChatPage() {
                     <PromptTemplatePicker
                       templates={promptTemplates}
                       selected={selectedPrompt}
-                      disabled={
-                        isActiveConvStreaming || activeConversationId == null
-                      }
+                      disabled={streaming || activeConversationId == null}
                       onSelect={handlePromptSelect}
                       onClear={() => setSelectedPrompt(null)}
-                    />
-                    <KnowledgeBasePicker
-                      options={knowledgeBases}
-                      value={selectedKnowledgeBaseIds}
-                      disabled={
-                        isActiveConvStreaming || activeConversationId == null
-                      }
-                      onChange={setSelectedKnowledgeBaseIds}
                     />
                   </div>
                 </div>
@@ -933,12 +512,10 @@ export default function ChatPage() {
                   key={activeConversationId ?? "none"}
                   messages={messages}
                   firstItemIndex={firstItemIndex}
-                  streaming={isActiveConvStreaming}
+                  streaming={streaming}
                   loadingMore={loadingMore}
                   hasMore={hasMore}
                   userAvatarText={userAvatarText}
-                  onCopy={handleCopyMessage}
-                  onRegenerate={handleRegenerateMessage}
                   onLoadOlder={() => {
                     if (activeConversationId) {
                       void loadOlder(activeConversationId);
@@ -952,14 +529,14 @@ export default function ChatPage() {
               <div className="chat-composer-wrap">
                 <PromptTemplateChip
                   selected={selectedPrompt}
-                  disabled={isActiveConvStreaming || activeConversationId == null}
+                  disabled={streaming || activeConversationId == null}
                   onClear={() => setSelectedPrompt(null)}
                 />
                 <div className="chat-composer">
                   <PromptTemplateMenu
                     templates={promptTemplates}
                     selected={selectedPrompt}
-                    disabled={isActiveConvStreaming || activeConversationId == null}
+                    disabled={streaming || activeConversationId == null}
                     onSelect={handlePromptSelect}
                   />
                   <textarea
@@ -968,39 +545,27 @@ export default function ChatPage() {
                     value={input}
                     rows={1}
                     placeholder={
-                      isActiveConvStreaming
+                      streaming
                         ? "AI 正在回复，请稍候..."
-                        : getStoppedAssistantMessage()
-                          ? "可编辑问题后重新发送，不会新增消息"
-                          : selectedPrompt
-                            ? `已启用「${selectedPrompt.name}」，填写${selectedPrompt.contextLabel}`
-                            : "输入消息，Enter 发送，Shift + Enter 换行"
+                        : selectedPrompt
+                          ? `已启用「${selectedPrompt.name}」，填写${selectedPrompt.contextLabel}`
+                          : "输入消息，Enter 发送，Shift + Enter 换行"
                     }
-                    disabled={isActiveConvStreaming || activeConversationId == null}
+                    disabled={streaming || activeConversationId == null}
                     onChange={handleInput}
                     onKeyDown={handleKeyDown}
                   />
-                  {isActiveConvStreaming ? (
-                    <button
-                      type="button"
-                      className="chat-composer-stop"
-                      onClick={handleStopGeneration}
-                      aria-label="停止生成"
-                    >
-                      <StopOutlined />
-                      <span>停止</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="chat-composer-send"
-                      onClick={() => handleSend()}
-                      disabled={!input.trim() || activeConversationId == null}
-                      aria-label="发送消息"
-                    >
-                      <SendOutlined />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className={`chat-composer-send${streaming ? " chat-composer-send--loading" : ""}`}
+                    onClick={() => handleSend()}
+                    disabled={
+                      streaming || !input.trim() || activeConversationId == null
+                    }
+                    aria-label="发送消息"
+                  >
+                    {streaming ? <Spin size="small" /> : <SendOutlined />}
+                  </button>
                 </div>
                 <p className="chat-footer-tip">内容由 AI 生成，请自行甄别</p>
               </div>

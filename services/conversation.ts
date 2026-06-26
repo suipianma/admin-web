@@ -40,11 +40,6 @@ export function deleteConversation(id: number) {
   return request.delete(`/conversations/${id}`);
 }
 
-/** 删除当前用户全部会话 */
-export function deleteAllConversations() {
-  return request.delete<{ count: number }>("/conversations/all");
-}
-
 export interface MessagesPageResult {
   items: ConversationMessage[];
   hasMore: boolean;
