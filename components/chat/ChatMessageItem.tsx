@@ -9,6 +9,7 @@ import {
   RobotOutlined,
 } from "@ant-design/icons";
 import { ChatMessageAst } from "@/components/chat/message-ast";
+import AgentStepBlock from "@/components/chat/AgentStepBlock";
 import ToolCallBlock from "@/components/chat/ToolCallBlock";
 
 export interface ToolCallItem {
@@ -18,6 +19,16 @@ export interface ToolCallItem {
   status: "calling" | "done" | "error";
 }
 
+export interface AgentStepItem {
+  type: "start" | "step" | "tool_call" | "tool_result" | "done";
+  step?: number;
+  maxSteps?: number;
+  totalSteps?: number;
+  tool?: string;
+  args?: Record<string, string>;
+  result?: string;
+}
+
 export interface ChatMessage {
   id: number;
   role: "user" | "assistant";
@@ -25,6 +36,7 @@ export interface ChatMessage {
   thinking?: string;
   fromCache?: boolean;
   toolCalls?: ToolCallItem[];
+  agentSteps?: AgentStepItem[];
 }
 
 interface ChatMessageItemProps {
@@ -154,6 +166,9 @@ function ChatMessageItem({
             </div>
           ) : (
             <div className="chat-ai-content">
+              {msg.agentSteps && msg.agentSteps.length > 0 && (
+                <AgentStepBlock steps={msg.agentSteps} />
+              )}
               {msg.toolCalls && msg.toolCalls.length > 0 && (
                 <ToolCallBlock toolCalls={msg.toolCalls} />
               )}
@@ -208,6 +223,7 @@ export default memo(ChatMessageItem, (prev, next) => {
     prev.msg.thinking === next.msg.thinking &&
     prev.msg.fromCache === next.msg.fromCache &&
     JSON.stringify(prev.msg.toolCalls) === JSON.stringify(next.msg.toolCalls) &&
+    JSON.stringify(prev.msg.agentSteps) === JSON.stringify(next.msg.agentSteps) &&
     prev.isLast === next.isLast &&
     prev.isStreaming === next.isStreaming &&
     prev.userAvatarText === next.userAvatarText &&

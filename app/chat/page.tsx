@@ -118,6 +118,7 @@ export default function ChatPage() {
     updateMessage,
     appendToolCall,
     completeToolCall,
+    appendAgentStep,
     removeMessages,
     reset: resetMessages,
     saveDraft,
@@ -374,6 +375,38 @@ export default function ChatPage() {
         }
         completeToolCall(meta.assistantId, tool, result, error);
       },
+      onAgentStep: (payload: {
+        phase: "agent_start" | "agent_step" | "agent_done";
+        step?: number;
+        maxSteps?: number;
+        steps?: number;
+      }) => {
+        const item =
+          payload.phase === "agent_start"
+            ? { type: "start" as const, maxSteps: payload.maxSteps }
+            : payload.phase === "agent_step"
+              ? {
+                  type: "step" as const,
+                  step: payload.step,
+                  maxSteps: payload.maxSteps,
+                }
+              : { type: "done" as const, totalSteps: payload.steps };
+
+        if (!isViewingConversation(conversationId)) {
+          mutateDraftMessages(conversationId, (msgs) =>
+            msgs.map((m) =>
+              m.id === meta.assistantId
+                ? {
+                    ...m,
+                    agentSteps: [...(m.agentSteps ?? []), item],
+                  }
+                : m
+            )
+          );
+          return;
+        }
+        appendAgentStep(meta.assistantId, item);
+      },
       onStreamMeta: ({ streamId }: { streamId: string }) => {
         streamIdsRef.current.set(conversationId, streamId);
         saveActiveStream(conversationId, streamId);
@@ -407,6 +440,7 @@ export default function ChatPage() {
       },
     }),
     [
+      appendAgentStep,
       appendToolCall,
       cancelStream,
       completeToolCall,

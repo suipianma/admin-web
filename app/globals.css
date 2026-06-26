@@ -2046,6 +2046,63 @@ body {
   line-height: 1.7;
 }
 
+.chat-agent-steps {
+  margin-bottom: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-muted);
+}
+
+.chat-agent-steps-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.chat-agent-steps-body {
+  padding: 0 12px 10px;
+}
+
+.chat-agent-step {
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  border-top: 1px dashed var(--color-border);
+}
+
+.chat-agent-step:first-child {
+  border-top: none;
+}
+
+.chat-agent-step-label {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.chat-agent-step-detail {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.chat-agent-steps-chevron {
+  margin-left: auto;
+  font-size: 10px;
+  transition: transform 0.15s;
+}
+
+.chat-agent-steps-chevron--open {
+  transform: rotate(180deg);
+}
+
 /* AI 内容 Markdown 样式 */
 .chat-markdown {
   font-size: 14px;

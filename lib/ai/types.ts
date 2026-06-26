@@ -19,12 +19,20 @@ export interface StreamToolResultPayload {
   step?: number;
 }
 
+export interface StreamAgentStepPayload {
+  phase: "agent_start" | "agent_step" | "agent_done";
+  step?: number;
+  maxSteps?: number;
+  steps?: number;
+}
+
 export interface StreamHandlers {
   onUpdate: (reply: ChatReplyResult) => void;
   onDone: () => void;
   onError: (error: ApiError) => void;
   onToolCall?: (payload: StreamToolCallPayload) => void;
   onToolResult?: (payload: StreamToolResultPayload) => void;
+  onAgentStep?: (payload: StreamAgentStepPayload) => void;
   onStreamMeta?: (meta: { streamId: string; seq?: number }) => void;
   onStreamInterrupted?: (streamId: string) => void;
 }

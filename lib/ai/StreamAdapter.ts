@@ -59,8 +59,16 @@ export function createStreamAdapter({
   let accResponse = "";
   let streamId: string | undefined;
 
-  const { onUpdate, onDone, onError, onToolCall, onToolResult, onStreamMeta, onStreamInterrupted } =
-    handlers;
+  const {
+    onUpdate,
+    onDone,
+    onError,
+    onToolCall,
+    onToolResult,
+    onAgentStep,
+    onStreamMeta,
+    onStreamInterrupted,
+  } = handlers;
 
   const finishStream = () => {
     if (completed) return;
@@ -119,6 +127,20 @@ export function createStreamAdapter({
         window.clearTimeout(timeoutTimer);
         es.close();
         onError(new ApiError(parsed.error));
+        return;
+      }
+
+      if (
+        parsed.phase === "agent_start" ||
+        parsed.phase === "agent_step" ||
+        parsed.phase === "agent_done"
+      ) {
+        onAgentStep?.({
+          phase: parsed.phase,
+          step: parsed.step,
+          maxSteps: parsed.maxSteps,
+          steps: parsed.steps,
+        });
         return;
       }
 

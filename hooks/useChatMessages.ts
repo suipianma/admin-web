@@ -3,7 +3,7 @@ import {
   getConversationMessages,
   type ConversationMessage,
 } from "@/services/conversation";
-import type { ChatMessage } from "@/components/chat/ChatMessageItem";
+import type { AgentStepItem, ChatMessage } from "@/components/chat/ChatMessageItem";
 
 export const MESSAGE_PAGE_SIZE = 30;
 
@@ -264,6 +264,20 @@ export function useChatMessages() {
     []
   );
 
+  const appendAgentStep = useCallback((id: number, step: AgentStepItem) => {
+    setMessages((prev) => {
+      const next = prev.map((msg) => {
+        if (msg.id !== id) return msg;
+        return {
+          ...msg,
+          agentSteps: [...(msg.agentSteps ?? []), step],
+        };
+      });
+      messagesRef.current = next;
+      return next;
+    });
+  }, []);
+
   const removeMessages = useCallback((ids: number[]) => {
     const idSet = new Set(ids);
     setMessages((prev) => {
@@ -336,6 +350,7 @@ export function useChatMessages() {
     updateMessage,
     appendToolCall,
     completeToolCall,
+    appendAgentStep,
     removeMessages,
     reset,
     saveDraft,
