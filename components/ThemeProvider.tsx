@@ -11,12 +11,14 @@ import {
   useState,
 } from "react";
 import { flushSync } from "react-dom";
+import { useServerInsertedHTML } from "next/navigation";
 import { App, ConfigProvider, theme as antdTheme } from "antd";
 import {
   applyThemePreference,
   getInitialTheme,
   getSystemTheme,
   resolveTheme,
+  THEME_INIT_SCRIPT,
   type ResolvedTheme,
   type ThemePreference,
 } from "@/utils/theme";
@@ -47,6 +49,14 @@ export default function ThemeProvider({
 }: {
   children: React.ReactNode;
 }) {
+  // 在 SSR 流中注入脚本，避免 React 19 对组件内 <script> 的警告
+  useServerInsertedHTML(() => (
+    <script
+      id="theme-init"
+      dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
+    />
+  ));
+
   const [preference, setPreference] =
     useState<ThemePreference>(SSR_THEME_PREFERENCE);
   const [systemTheme, setSystemTheme] =

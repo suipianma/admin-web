@@ -57,8 +57,10 @@ export function createStreamAdapter({
   let cancelTypewriter: (() => void) | null = null;
   let accThinking = "";
   let accResponse = "";
+  let streamId: string | undefined;
 
-  const { onUpdate, onDone, onError, onToolCall, onToolResult } = handlers;
+  const { onUpdate, onDone, onError, onToolCall, onToolResult, onStreamMeta, onStreamInterrupted } =
+    handlers;
 
   const finishStream = () => {
     if (completed) return;
@@ -98,11 +100,18 @@ export function createStreamAdapter({
         args?: Record<string, string>;
         result?: string;
         step?: number;
+        streamId?: string;
+        seq?: number;
         data?: Record<string, unknown>;
       };
 
       if (parsed.data && typeof parsed.data === "object") {
         parsed = parsed.data as typeof parsed;
+      }
+
+      if (parsed.streamId) {
+        streamId = parsed.streamId;
+        onStreamMeta?.({ streamId: parsed.streamId, seq: parsed.seq });
       }
 
       if (parsed.error) {
@@ -174,6 +183,11 @@ export function createStreamAdapter({
     finished = true;
 
     if (!wasConnecting && (accThinking || accResponse)) {
+      if (streamId && onStreamInterrupted) {
+        onStreamInterrupted(streamId);
+        return;
+      }
+
       onUpdate(
         normalizeReply({
           thinking: accThinking,
@@ -212,7 +226,8 @@ export function buildStreamUrl(
   baseUrl: string,
   request: {
     conversationId: number;
-    content: string;
+    content?: string;
+    resumeStreamId?: string;
     promptId?: string;
     knowledgeBaseIds?: number[];
     regenerate?: boolean;
@@ -220,7 +235,14 @@ export function buildStreamUrl(
   }
 ): string {
   const token = getToken();
-  const params = new URLSearchParams({ content: request.content });
+  const params = new URLSearchParams();
+
+  if (request.resumeStreamId) {
+    params.set("streamId", request.resumeStreamId);
+  } else if (request.content) {
+    params.set("content", request.content);
+  }
+
   if (request.promptId) params.set("promptId", request.promptId);
   if (request.knowledgeBaseIds?.length) {
     params.set("knowledgeBaseIds", request.knowledgeBaseIds.join(","));

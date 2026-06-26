@@ -3,6 +3,9 @@ export type ResolvedTheme = "light" | "dark";
 
 const THEME_KEY = "theme";
 
+/** 首屏注入脚本：在 hydration 前设置 data-theme，避免闪屏；通过 useServerInsertedHTML 注入 */
+export const THEME_INIT_SCRIPT = `(function(){try{var p=localStorage.getItem("theme")||"system";var r=p;if(p==="system"){r=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}if(r==="dark"||r==="light"){document.documentElement.setAttribute("data-theme",r);document.documentElement.style.colorScheme=r}}catch(e){}})();`;
+
 export function getSystemTheme(): ResolvedTheme {
   if (typeof window === "undefined") return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches

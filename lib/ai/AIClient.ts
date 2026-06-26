@@ -5,6 +5,10 @@ import {
   API_BASE,
 } from "@/config/api";
 import { ApiError } from "@/utils/apiError";
+import {
+  clearActiveStream,
+  saveActiveStream,
+} from "@/utils/streamSessionStorage";
 import { CircuitBreaker } from "./CircuitBreaker";
 import { isRetryableAIError } from "./ErrorNormalizer";
 import { RequestQueue } from "./RequestQueue";
@@ -15,6 +19,8 @@ import {
 } from "./RetryPolicy";
 import { buildStreamUrl, createStreamAdapter } from "./StreamAdapter";
 import type { StreamChatRequest } from "./types";
+
+const MAX_STREAM_RESUME_RETRIES = 3;
 
 export class AIClient {
   private readonly queue: RequestQueue;
@@ -28,11 +34,12 @@ export class AIClient {
     this.breaker = new CircuitBreaker();
   }
 
-  /** 流式对话：队列 + 熔断 + 连接失败指数退避重试 */
   streamChat(request: StreamChatRequest): () => void {
     let aborted = false;
     let cleanup: (() => void) | null = null;
-    let attempt = 0;
+    let connectAttempt = 0;
+    let resumeAttempt = 0;
+    let resumeStreamId: string | undefined = request.resumeStreamId;
 
     const stop = () => {
       aborted = true;
@@ -53,6 +60,11 @@ export class AIClient {
         return;
       }
 
+      if (!resumeStreamId && !request.content?.trim()) {
+        request.handlers.onError(new ApiError("消息内容不能为空"));
+        return;
+      }
+
       await this.queue.run(`stream-${request.conversationId}`, () =>
         new Promise<void>((resolve) => {
           if (aborted) {
@@ -61,14 +73,15 @@ export class AIClient {
           }
 
           const useFallback =
-            attempt > 0 && Boolean(request.model ?? AI_FALLBACK_MODEL);
+            connectAttempt > 0 && Boolean(request.model ?? AI_FALLBACK_MODEL);
           const model = useFallback
             ? request.model ?? AI_FALLBACK_MODEL
             : undefined;
 
           const url = buildStreamUrl(this.baseUrl, {
             conversationId: request.conversationId,
-            content: request.content,
+            content: resumeStreamId ? undefined : request.content,
+            resumeStreamId,
             promptId: request.promptId,
             knowledgeBaseIds: request.knowledgeBaseIds,
             regenerate: request.regenerate,
@@ -82,8 +95,39 @@ export class AIClient {
             timeoutMs: AI_STREAM_TIMEOUT_MS,
             handlers: {
               ...request.handlers,
+              onStreamMeta: (meta) => {
+                resumeStreamId = meta.streamId;
+                saveActiveStream(request.conversationId, meta.streamId);
+                request.handlers.onStreamMeta?.(meta);
+              },
+              onStreamInterrupted: (streamId) => {
+                cleanup?.();
+                cleanup = null;
+
+                if (
+                  !aborted &&
+                  resumeAttempt < MAX_STREAM_RESUME_RETRIES
+                ) {
+                  resumeAttempt += 1;
+                  resumeStreamId = streamId;
+                  const delay = getBackoffDelay(
+                    resumeAttempt,
+                    defaultStreamRetryPolicy
+                  );
+                  void sleep(delay).then(() => {
+                    void connect().then(resolve);
+                  });
+                  return;
+                }
+
+                request.handlers.onError(
+                  new ApiError("AI 流式响应中断，请稍后重试", { status: 500 })
+                );
+                resolve();
+              },
               onDone: () => {
                 this.breaker.recordSuccess();
+                clearActiveStream();
                 request.handlers.onDone();
                 resolve();
               },
@@ -105,10 +149,10 @@ export class AIClient {
               if (
                 !aborted &&
                 isRetryableAIError(error) &&
-                attempt < defaultStreamRetryPolicy.maxRetries
+                connectAttempt < defaultStreamRetryPolicy.maxRetries
               ) {
-                attempt += 1;
-                const delay = getBackoffDelay(attempt, defaultStreamRetryPolicy);
+                connectAttempt += 1;
+                const delay = getBackoffDelay(connectAttempt, defaultStreamRetryPolicy);
                 void sleep(delay).then(() => {
                   void connect().then(resolve);
                 });

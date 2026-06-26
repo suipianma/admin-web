@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AppShell from "@/components/AppShell";
@@ -26,24 +25,6 @@ export const viewport: Viewport = {
   maximumScale: 1,
 };
 
-const themeInitScript = `
-(function () {
-  try {
-    var preference = localStorage.getItem("theme") || "system";
-    var resolved = preference;
-    if (preference === "system") {
-      resolved = window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light";
-    }
-    if (resolved === "dark" || resolved === "light") {
-      document.documentElement.setAttribute("data-theme", resolved);
-      document.documentElement.style.colorScheme = resolved;
-    }
-  } catch (e) {}
-})();
-`;
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -56,11 +37,6 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="h-full">
-        <Script
-          id="theme-init"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{ __html: themeInitScript }}
-        />
         <ThemeProvider>
           <AppShell>{children}</AppShell>
         </ThemeProvider>

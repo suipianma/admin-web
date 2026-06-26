@@ -1,9 +1,14 @@
 "use client";
 
 import { memo } from "react";
-import { Avatar } from "antd";
-import { BulbOutlined, RobotOutlined } from "@ant-design/icons";
-import ChatMarkdown from "@/components/ChatMarkdown";
+import { Avatar, Button, Tooltip } from "antd";
+import {
+  BulbOutlined,
+  CopyOutlined,
+  RedoOutlined,
+  RobotOutlined,
+} from "@ant-design/icons";
+import { ChatMessageAst } from "@/components/chat/message-ast";
 import ToolCallBlock from "@/components/chat/ToolCallBlock";
 
 export interface ToolCallItem {
@@ -27,6 +32,8 @@ interface ChatMessageItemProps {
   isLast: boolean;
   isStreaming: boolean;
   userAvatarText: string;
+  onCopy?: (text: string) => void;
+  onRegenerate?: (msgId: number) => void;
 }
 
 function TypingIndicator() {
@@ -39,11 +46,24 @@ function TypingIndicator() {
   );
 }
 
+function buildCopyText(msg: ChatMessage): string {
+  const parts: string[] = [];
+  if (msg.thinking?.trim()) {
+    parts.push(`【思考过程】\n${msg.thinking.trim()}`);
+  }
+  if (msg.content?.trim()) {
+    parts.push(msg.content.trim());
+  }
+  return parts.join("\n\n");
+}
+
 function ChatMessageItem({
   msg,
   isLast,
   isStreaming,
   userAvatarText,
+  onCopy,
+  onRegenerate,
 }: ChatMessageItemProps) {
   const isUser = msg.role === "user";
   const isWaiting =
@@ -54,11 +74,45 @@ function ChatMessageItem({
     !msg.thinking &&
     !msg.toolCalls?.length;
   const isStreamingMsg = isStreaming && isLast && !isUser;
+  const copyText = buildCopyText(msg);
+  const canCopy = Boolean(copyText && onCopy);
+  const canRegenerate =
+    !isUser && isLast && !isStreaming && Boolean(onRegenerate);
+
+  const actionBar = (canCopy || canRegenerate) && (
+    <div className="chat-msg-actions">
+      {canCopy && (
+        <Tooltip title="复制">
+          <Button
+            type="text"
+            size="small"
+            className="chat-msg-action-btn"
+            icon={<CopyOutlined />}
+            onClick={() => onCopy?.(copyText)}
+            aria-label="复制消息"
+          />
+        </Tooltip>
+      )}
+      {canRegenerate && (
+        <Tooltip title="重新生成">
+          <Button
+            type="text"
+            size="small"
+            className="chat-msg-action-btn"
+            icon={<RedoOutlined />}
+            onClick={() => onRegenerate?.(msg.id)}
+            aria-label="重新生成"
+          />
+        </Tooltip>
+      )}
+    </div>
+  );
 
   if (isUser) {
     return (
       <div className="chat-row chat-row-user">
         <div className="chat-row-main">
+          {actionBar}
           <div className="chat-bubble chat-bubble-user">{msg.content}</div>
         </div>
         <Avatar className="chat-avatar chat-avatar-user" size={32}>
@@ -76,6 +130,7 @@ function ChatMessageItem({
         icon={<RobotOutlined />}
       />
       <div className="chat-row-main">
+        {actionBar}
         <div className="chat-ai-header">
           <span className="chat-ai-name">AI 助手</span>
           {msg.fromCache && <span className="chat-cache-tag">缓存</span>}
@@ -115,7 +170,7 @@ function ChatMessageItem({
                         : ""
                     }`}
                   >
-                    <ChatMarkdown
+                    <ChatMessageAst
                       content={msg.thinking}
                       className="chat-markdown-thinking"
                       streaming={isStreamingMsg && !msg.content}
@@ -131,7 +186,7 @@ function ChatMessageItem({
                   }`}
                 >
                   {msg.thinking && <div className="chat-answer-label">回答</div>}
-                  <ChatMarkdown
+                  <ChatMessageAst
                     content={msg.content}
                     streaming={isStreamingMsg}
                     forceParse={!isStreamingMsg}
@@ -155,6 +210,8 @@ export default memo(ChatMessageItem, (prev, next) => {
     JSON.stringify(prev.msg.toolCalls) === JSON.stringify(next.msg.toolCalls) &&
     prev.isLast === next.isLast &&
     prev.isStreaming === next.isStreaming &&
-    prev.userAvatarText === next.userAvatarText
+    prev.userAvatarText === next.userAvatarText &&
+    prev.onCopy === next.onCopy &&
+    prev.onRegenerate === next.onRegenerate
   );
 });

@@ -1,4 +1,5 @@
 import request from "./request";
+import { streamChat, type StreamChatOptions } from "./ai";
 
 export interface Conversation {
   id: number;
@@ -35,6 +36,11 @@ export function updateConversation(id: number, data: { title: string }) {
   return request.patch<Conversation>(`/conversations/${id}`, data);
 }
 
+/** 删除当前用户全部会话 */
+export function deleteAllConversations() {
+  return request.delete<{ deleted: number }>("/conversations/all");
+}
+
 /** 删除会话（级联删除消息） */
 export function deleteConversation(id: number) {
   return request.delete(`/conversations/${id}`);
@@ -51,6 +57,18 @@ export interface GetMessagesParams {
   beforeId?: number;
 }
 
+export interface ActiveStreamSession {
+  streamId: string;
+  conversationId: number;
+  status: "generating" | "completed" | "failed" | "interrupted";
+  thinking: string;
+  response: string;
+  seq: number;
+  fromCache: boolean;
+  error?: string;
+  done: boolean;
+}
+
 /** 分页获取会话历史消息 */
 export function getConversationMessages(
   conversationId: number,
@@ -59,5 +77,32 @@ export function getConversationMessages(
   return request.get<MessagesPageResult>(
     `/conversations/${conversationId}/messages`,
     { params }
+  );
+}
+
+/** 获取当前会话进行中的流式任务快照（用于刷新后恢复） */
+export function getActiveStreamSession(conversationId: number) {
+  return request.get<ActiveStreamSession | null>(
+    `/conversations/${conversationId}/stream/active`
+  );
+}
+
+/** 续传已有流式任务 */
+export function resumeStreamChat(
+  conversationId: number,
+  resumeStreamId: string,
+  options: Omit<StreamChatOptions, "content" | "resumeStreamId">
+) {
+  return streamChat(conversationId, undefined, {
+    ...options,
+    resumeStreamId,
+  });
+}
+
+/** 停止进行中的流式生成 */
+export function cancelStreamSession(conversationId: number, streamId: string) {
+  return request.delete<{ ok: boolean }>(
+    `/conversations/${conversationId}/stream`,
+    { params: { streamId } }
   );
 }

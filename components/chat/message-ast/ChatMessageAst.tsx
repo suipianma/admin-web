@@ -9,7 +9,7 @@ interface ChatMessageAstProps {
   /** Markdown 源文本 */
   content: string;
   className?: string;
-  /** 流式输出中：纯文本，不解析 AST */
+  /** 流式输出中：增量解析 AST，标题/列表实时结构化展示 */
   streaming?: boolean;
   /** 强制解析（流式结束） */
   forceParse?: boolean;
@@ -28,7 +28,7 @@ function ChatMessageAstInner({
   const [visible, setVisible] = useState(forceParse);
 
   useEffect(() => {
-    if (forceParse || !streaming) {
+    if (forceParse || streaming) {
       setVisible(true);
       return;
     }
@@ -51,8 +51,13 @@ function ChatMessageAstInner({
   }, [forceParse, streaming]);
 
   const markdownBlocks = useMemo(() => {
-    if (streaming || !visible || !content.trim()) return [];
-    return parseMarkdownToBlocks(content);
+    if (!content.trim()) return [];
+    if (!streaming && !visible) return [];
+    try {
+      return parseMarkdownToBlocks(content);
+    } catch {
+      return [];
+    }
   }, [content, streaming, visible]);
 
   const blocks = useMemo(
@@ -60,16 +65,29 @@ function ChatMessageAstInner({
     [prefixBlocks, markdownBlocks]
   );
 
-  if (streaming || !visible) {
+  if (streaming) {
+    return (
+      <div ref={rootRef}>
+        {blocks.length > 0 ? (
+          <MessageBlockList blocks={blocks} className={className} />
+        ) : content ? (
+          <div
+            className={`msg-ast-root msg-ast-plain${className ? ` ${className}` : ""}`}
+          >
+            <div className="msg-ast-streaming-text">{content}</div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (!visible) {
     return (
       <div
         ref={rootRef}
         className={`msg-ast-root msg-ast-plain${className ? ` ${className}` : ""}`}
       >
-        {prefixBlocks.length > 0 && <MessageBlockList blocks={prefixBlocks} />}
-        {content && (
-          <div className="msg-ast-streaming-text">{content}</div>
-        )}
+        {content}
       </div>
     );
   }

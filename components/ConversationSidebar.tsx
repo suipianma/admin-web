@@ -24,10 +24,12 @@ interface ConversationSidebarProps {
   activeId: number | null;
   loading: boolean;
   disabled?: boolean;
+  streamingIds?: number[];
   onSelect: (id: number) => void;
   onCreate: () => void;
   onRename: (id: number, title: string) => void;
   onDelete: (id: number) => void;
+  onDeleteAll?: () => void;
 }
 
 export default function ConversationSidebar({
@@ -35,14 +37,17 @@ export default function ConversationSidebar({
   activeId,
   loading,
   disabled = false,
+  streamingIds = [],
   onSelect,
   onCreate,
   onRename,
   onDelete,
+  onDeleteAll,
 }: ConversationSidebarProps) {
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
 
   function openRename(conv: Conversation) {
     setRenameTarget(conv);
@@ -130,6 +135,7 @@ export default function ConversationSidebar({
           ) : (
             conversations.map((conv) => {
               const isActive = conv.id === activeId;
+              const isStreaming = streamingIds.includes(conv.id);
 
               return (
                 <div
@@ -146,6 +152,9 @@ export default function ConversationSidebar({
                   </span>
                   <span className="conv-item-title" title={conv.title}>
                     {conv.title}
+                    {isStreaming && (
+                      <span className="conv-item-streaming">···</span>
+                    )}
                   </span>
                   <Dropdown
                     menu={{ items: getMenuItems(conv) }}
@@ -165,6 +174,21 @@ export default function ConversationSidebar({
             })
           )}
         </div>
+
+        {onDeleteAll && conversations.length > 0 && (
+          <div className="conv-sidebar-footer">
+            <Button
+              danger
+              block
+              className="conv-delete-all-btn"
+              icon={<DeleteOutlined />}
+              disabled={disabled}
+              onClick={() => setDeleteAllOpen(true)}
+            >
+              删除全部会话
+            </Button>
+          </div>
+        )}
       </div>
 
       <Modal
@@ -197,6 +221,23 @@ export default function ConversationSidebar({
       >
         <p style={{ margin: 0, color: "rgba(0,0,0,0.65)" }}>
           删除后消息不可恢复
+        </p>
+      </Modal>
+      <Modal
+        title="确定删除全部会话？"
+        open={deleteAllOpen}
+        okText="全部删除"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+        onOk={() => {
+          setDeleteAllOpen(false);
+          onDeleteAll?.();
+        }}
+        onCancel={() => setDeleteAllOpen(false)}
+        destroyOnHidden
+      >
+        <p style={{ margin: 0, color: "rgba(0,0,0,0.65)" }}>
+          将清空所有会话及消息，且不可恢复
         </p>
       </Modal>
     </>

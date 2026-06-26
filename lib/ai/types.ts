@@ -25,15 +25,17 @@ export interface StreamHandlers {
   onError: (error: ApiError) => void;
   onToolCall?: (payload: StreamToolCallPayload) => void;
   onToolResult?: (payload: StreamToolResultPayload) => void;
+  onStreamMeta?: (meta: { streamId: string; seq?: number }) => void;
+  onStreamInterrupted?: (streamId: string) => void;
 }
 
 export interface StreamChatRequest {
   conversationId: number;
-  content: string;
+  content?: string;
+  resumeStreamId?: string;
   promptId?: string;
   knowledgeBaseIds?: number[];
   regenerate?: boolean;
-  /** 重试时可选降级模型（需后端支持 model 查询参数） */
   model?: string;
   handlers: StreamHandlers;
 }
