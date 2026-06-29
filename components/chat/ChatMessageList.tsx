@@ -21,6 +21,7 @@ interface ChatMessageListProps {
   onLoadOlder: () => void;
   onCopy?: (text: string) => void;
   onRegenerate?: (msgId: number) => void;
+  onFeedback?: (msgId: number, feedback: "up" | "down" | null) => void;
   scrollApiRef?: React.MutableRefObject<ChatMessageScrollApi | null>;
   onActiveNavChange?: (messageId: number | null) => void;
   onAtBottomChange?: (isAtBottom: boolean) => void;
@@ -36,6 +37,7 @@ export default function ChatMessageList({
   onLoadOlder,
   onCopy,
   onRegenerate,
+  onFeedback,
   scrollApiRef,
   onActiveNavChange,
   onAtBottomChange,
@@ -317,6 +319,7 @@ export default function ChatMessageList({
                 userAvatarText={userAvatarText}
                 onCopy={onCopy}
                 onRegenerate={onRegenerate}
+                onFeedback={onFeedback}
               />
             </div>
           );

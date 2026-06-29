@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Button,
   Descriptions,
@@ -11,13 +11,18 @@ import {
   Tag,
   Typography,
 } from "antd";
-import { ClearOutlined, RadarChartOutlined } from "@ant-design/icons";
+import { ClearOutlined, DownloadOutlined, RadarChartOutlined } from "@ant-design/icons";
 import { useObservability } from "@/hooks/useObservability";
 import { observabilityStore } from "@/lib/observability";
 import type { StreamRunTrace, ToolCallTrace } from "@/lib/observability";
+import {
+  getContextTrace,
+  type ContextTraceResponse,
+} from "@/services/conversation";
 
 interface ChatObservabilityPanelProps {
   open: boolean;
+  conversationId: number | null;
   onClose: () => void;
 }
 
@@ -40,9 +45,14 @@ function statusTag(status: StreamRunTrace["status"]) {
 
 export default function ChatObservabilityPanel({
   open,
+  conversationId,
   onClose,
 }: ChatObservabilityPanelProps) {
   const { totals, activeRun, runs, recentEvents } = useObservability();
+  const [contextTrace, setContextTrace] = useState<ContextTraceResponse | null>(
+    null
+  );
+  const [traceLoading, setTraceLoading] = useState(false);
 
   const toolColumns = useMemo(
     () => [
@@ -142,13 +152,32 @@ export default function ChatObservabilityPanel({
       onClose={onClose}
       className="chat-observability-drawer"
       extra={
-        <Button
-          size="small"
-          icon={<ClearOutlined />}
-          onClick={() => observabilityStore.clear()}
-        >
-          清空
-        </Button>
+        <div className="obs-panel-actions">
+          <Button
+            size="small"
+            icon={<DownloadOutlined />}
+            onClick={() => {
+              const blob = new Blob([observabilityStore.exportJson()], {
+                type: "application/json",
+              });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `observability-${Date.now()}.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            导出
+          </Button>
+          <Button
+            size="small"
+            icon={<ClearOutlined />}
+            onClick={() => observabilityStore.clear()}
+          >
+            清空
+          </Button>
+        </div>
       }
     >
       <div className="obs-panel">
@@ -207,7 +236,89 @@ export default function ChatObservabilityPanel({
           ) : (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="无活跃流" />
           )}
+          {activeRun && conversationId != null && (
+            <Button
+              size="small"
+              loading={traceLoading}
+              onClick={() => {
+                setTraceLoading(true);
+                void getContextTrace(conversationId, activeRun.requestId)
+                  .then((res) => setContextTrace(res.data))
+                  .catch(() => setContextTrace(null))
+                  .finally(() => setTraceLoading(false));
+              }}
+            >
+              加载 Context Trace
+            </Button>
+          )}
         </section>
+
+        {contextTrace && (
+          <section className="obs-section">
+            <Typography.Text type="secondary" className="obs-section-label">
+              Context Trace
+            </Typography.Text>
+            <Descriptions size="small" column={1} bordered>
+              <Descriptions.Item label="traceId">
+                {contextTrace.traceId}
+              </Descriptions.Item>
+              <Descriptions.Item label="model">
+                {contextTrace.model}
+              </Descriptions.Item>
+              <Descriptions.Item label="Token 预算">
+                {contextTrace.budget.usedTokens} / {contextTrace.budget.maxTokens}
+              </Descriptions.Item>
+              <Descriptions.Item label="选中块">
+                {contextTrace.selectedBlocks.length}
+              </Descriptions.Item>
+              <Descriptions.Item label="丢弃块">
+                {contextTrace.droppedBlocks.length}
+              </Descriptions.Item>
+            </Descriptions>
+            {contextTrace.stageTimings &&
+              Object.keys(contextTrace.stageTimings).length > 0 && (
+                <div className="obs-trace-blocks">
+                  <Typography.Text type="secondary">Pipeline 耗时</Typography.Text>
+                  <ul className="obs-trace-block-list">
+                    {Object.entries(contextTrace.stageTimings).map(
+                      ([stage, ms]) => (
+                        <li key={stage}>
+                          <Tag>{stage}</Tag>
+                          <span>{ms} ms</span>
+                        </li>
+                      )
+                    )}
+                  </ul>
+                </div>
+              )}
+            {contextTrace.selectedBlocks.length > 0 && (
+              <div className="obs-trace-blocks">
+                <Typography.Text type="secondary">选中块</Typography.Text>
+                <ul className="obs-trace-block-list">
+                  {contextTrace.selectedBlocks.map((block, index) => (
+                    <li key={`sel-${index}`}>
+                      <Tag color="success">{block.category}</Tag>
+                      <span>{block.tokenCount} tokens</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {contextTrace.droppedBlocks.length > 0 && (
+              <div className="obs-trace-blocks">
+                <Typography.Text type="secondary">丢弃块</Typography.Text>
+                <ul className="obs-trace-block-list">
+                  {contextTrace.droppedBlocks.map((block, index) => (
+                    <li key={`drop-${index}`}>
+                      <Tag color="warning">{block.category}</Tag>
+                      <span>{block.tokenCount} tokens</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )}
 
         {activeRun && activeRun.toolCalls.length > 0 && (
           <section className="obs-section">

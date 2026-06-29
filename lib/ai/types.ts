@@ -43,6 +43,15 @@ export interface StreamHandlers {
     requestId?: string;
   }) => void;
   onStreamInterrupted?: (streamId: string) => void;
+  onRagCitations?: (
+    citations: Array<{
+      chunkId: number;
+      documentName: string;
+      page?: number | null;
+      snippet: string;
+      score: number;
+    }>
+  ) => void;
 }
 
 export interface StreamChatRequest {

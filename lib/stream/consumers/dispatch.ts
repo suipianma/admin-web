@@ -1,5 +1,6 @@
 import { handleAgentTimelineEvent } from "./agent-timeline.consumer";
 import { handleAnalyticsEvent } from "./analytics.consumer";
+import { handleRagCitationsEvent } from "./rag-citations.consumer";
 import { handleObservabilityEvent } from "./observability.consumer";
 import { handleDebugLogEvent } from "./debug-log.consumer";
 import { handleMessageStoreEvent } from "./message-store.consumer";
@@ -14,6 +15,7 @@ export function dispatchStreamEvent(
   deps: ChatStreamConsumerDeps
 ): void {
   handleMessageStoreEvent(event, deps);
+  handleRagCitationsEvent(event, deps);
   handleToolUiEvent(event, deps);
   handleAgentTimelineEvent(event, deps);
   handleStreamLifecycleEvent(event, deps);

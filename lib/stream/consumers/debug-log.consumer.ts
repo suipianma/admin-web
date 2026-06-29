@@ -1,22 +1,16 @@
 import type { StreamEvent } from "../stream-event";
+import { observabilityStore } from "@/lib/observability/observability-store";
 
-const DEBUG_BUFFER_SIZE = 200;
-
-const debugBuffer: StreamEvent[] = [];
-
-/** Debug Panel 环形缓冲（stub） */
-export function handleDebugLogEvent(event: StreamEvent): void {
-  debugBuffer.push(event);
-  if (debugBuffer.length > DEBUG_BUFFER_SIZE) {
-    debugBuffer.shift();
-  }
+/** Debug 事件流：复用 Observability Store 的 recentEvents */
+export function handleDebugLogEvent(_event: StreamEvent): void {
+  // 由 observability consumer 统一 ingest，避免双缓冲
 }
 
-/** 供未来 Debug Panel 读取最近事件 */
+/** 读取最近事件（与 Observability Panel 事件流一致） */
 export function getStreamDebugLog(): readonly StreamEvent[] {
-  return debugBuffer;
+  return observabilityStore.getSnapshot().recentEvents;
 }
 
 export function clearStreamDebugLog(): void {
-  debugBuffer.length = 0;
+  observabilityStore.clear();
 }

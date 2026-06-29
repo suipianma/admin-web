@@ -19,6 +19,10 @@ export interface ChatStreamConsumerDeps {
     response: string;
     fromCache?: boolean;
   }) => void;
+  updateMessage: (
+    id: number,
+    patch: Partial<ChatMessage>
+  ) => void;
   mutateDraftMessages: (
     conversationId: number,
     updater: (msgs: ChatMessage[]) => ChatMessage[]

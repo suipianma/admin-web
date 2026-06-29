@@ -16,6 +16,7 @@ import {
   MessageOutlined,
   MoreOutlined,
   PlusOutlined,
+  PushpinOutlined,
 } from "@ant-design/icons";
 import type { Conversation } from "@/services/conversation";
 
@@ -30,6 +31,9 @@ interface ConversationSidebarProps {
   onRename: (id: number, title: string) => void;
   onDelete: (id: number) => void;
   onDeleteAll?: () => void;
+  onPin?: (id: number, pinned: boolean) => void;
+  searchQuery?: string;
+  onSearchChange?: (value: string) => void;
 }
 
 export default function ConversationSidebar({
@@ -43,6 +47,9 @@ export default function ConversationSidebar({
   onRename,
   onDelete,
   onDeleteAll,
+  onPin,
+  searchQuery = "",
+  onSearchChange,
 }: ConversationSidebarProps) {
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
@@ -78,7 +85,17 @@ export default function ConversationSidebar({
   }
 
   function getMenuItems(conv: Conversation): MenuProps["items"] {
+    const pinned = Boolean(conv.pinnedAt);
     return [
+      {
+        key: "pin",
+        icon: <PushpinOutlined />,
+        label: pinned ? "取消置顶" : "置顶",
+        onClick: ({ domEvent }) => {
+          domEvent.stopPropagation();
+          onPin?.(conv.id, !pinned);
+        },
+      },
       {
         key: "rename",
         icon: <EditOutlined />,
@@ -119,6 +136,16 @@ export default function ConversationSidebar({
           >
             新建会话
           </Button>
+          {onSearchChange && (
+            <Input.Search
+              allowClear
+              placeholder="搜索会话"
+              value={searchQuery}
+              disabled={disabled}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="conv-search-input"
+            />
+          )}
         </div>
 
         <div className="conv-list">
@@ -148,7 +175,7 @@ export default function ConversationSidebar({
                   }}
                 >
                   <span className="conv-item-icon">
-                    <MessageOutlined />
+                    {conv.pinnedAt ? <PushpinOutlined /> : <MessageOutlined />}
                   </span>
                   <span className="conv-item-title" title={conv.title}>
                     {conv.title}

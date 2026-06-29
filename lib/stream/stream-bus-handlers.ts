@@ -28,6 +28,9 @@ export function createStreamBusHandlers(
     onAgentStep: (payload) => {
       bus.emit({ type: "agent_step", conversationId, assistantId, payload });
     },
+    onRagCitations: (citations) => {
+      bus.emit({ type: "rag_citations", conversationId, assistantId, citations });
+    },
     onStreamMeta: ({ streamId, seq, requestId }) => {
       bus.emit({
         type: "stream_meta",

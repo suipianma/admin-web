@@ -45,6 +45,10 @@ function mapMessage(msg: ConversationMessage): ChatMessage {
     content: msg.content,
     thinking: msg.thinking ?? undefined,
     fromCache: msg.fromCache || undefined,
+    toolCalls: msg.metadata?.toolCalls,
+    agentSteps: msg.metadata?.agentSteps,
+    citations: msg.metadata?.citations,
+    feedback: msg.metadata?.feedback,
   };
 }
 
@@ -187,31 +191,23 @@ export function useChatMessages() {
   const updateMessage = useCallback(
     (
       id: number,
-      payload: {
-        content?: string;
-        thinking?: string;
-        fromCache?: boolean;
-        toolCalls?: ChatMessage["toolCalls"];
-      }
+      payload: Partial<
+        Pick<
+          ChatMessage,
+          | "content"
+          | "thinking"
+          | "fromCache"
+          | "toolCalls"
+          | "agentSteps"
+          | "citations"
+          | "feedback"
+        >
+      >
     ) => {
       setMessages((prev) => {
         const next = prev.map((msg) => {
           if (msg.id !== id) return msg;
-          return {
-            ...msg,
-            ...(payload.content !== undefined
-              ? { content: payload.content }
-              : {}),
-            ...(payload.thinking !== undefined
-              ? { thinking: payload.thinking }
-              : {}),
-            ...(payload.fromCache !== undefined
-              ? { fromCache: payload.fromCache }
-              : {}),
-            ...(payload.toolCalls !== undefined
-              ? { toolCalls: payload.toolCalls }
-              : {}),
-          };
+          return { ...msg, ...payload };
         });
         messagesRef.current = next;
         return next;

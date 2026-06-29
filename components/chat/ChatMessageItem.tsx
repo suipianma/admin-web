@@ -1,14 +1,17 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { Avatar, Button, Tooltip } from "antd";
 import {
   BulbOutlined,
   CopyOutlined,
+  DislikeOutlined,
+  LikeOutlined,
   RedoOutlined,
   RobotOutlined,
 } from "@ant-design/icons";
 import { ChatMessageAst } from "@/components/chat/message-ast";
+import { citationsToBlock } from "@/components/chat/message-ast";
 import AgentStepBlock from "@/components/chat/AgentStepBlock";
 import ToolCallBlock from "@/components/chat/ToolCallBlock";
 
@@ -37,6 +40,14 @@ export interface ChatMessage {
   fromCache?: boolean;
   toolCalls?: ToolCallItem[];
   agentSteps?: AgentStepItem[];
+  citations?: Array<{
+    chunkId: number;
+    documentName: string;
+    page?: number | null;
+    snippet: string;
+    score: number;
+  }>;
+  feedback?: "up" | "down";
 }
 
 interface ChatMessageItemProps {
@@ -46,6 +57,7 @@ interface ChatMessageItemProps {
   userAvatarText: string;
   onCopy?: (text: string) => void;
   onRegenerate?: (msgId: number) => void;
+  onFeedback?: (msgId: number, feedback: "up" | "down" | null) => void;
 }
 
 function TypingIndicator() {
@@ -76,6 +88,7 @@ function ChatMessageItem({
   userAvatarText,
   onCopy,
   onRegenerate,
+  onFeedback,
 }: ChatMessageItemProps) {
   const isUser = msg.role === "user";
   const isWaiting =
@@ -90,9 +103,45 @@ function ChatMessageItem({
   const canCopy = Boolean(copyText && onCopy);
   const canRegenerate =
     !isUser && isLast && !isStreaming && Boolean(onRegenerate);
+  const canFeedback = !isUser && !isStreaming && msg.id > 0 && Boolean(onFeedback);
 
-  const actionBar = (canCopy || canRegenerate) && (
+  // RAG 引用块：作为回答区 AST 前置块展示
+  const citationPrefixBlocks = useMemo(() => {
+    if (!msg.citations?.length) return [];
+    const block = citationsToBlock(msg.citations);
+    return block ? [block] : [];
+  }, [msg.citations]);
+
+  const actionBar = (canCopy || canRegenerate || canFeedback) && (
     <div className="chat-msg-actions">
+      {canFeedback && (
+        <>
+          <Tooltip title="有帮助">
+            <Button
+              type="text"
+              size="small"
+              className={`chat-msg-action-btn${msg.feedback === "up" ? " chat-msg-action-btn--active" : ""}`}
+              icon={<LikeOutlined />}
+              onClick={() =>
+                onFeedback?.(msg.id, msg.feedback === "up" ? null : "up")
+              }
+              aria-label="点赞"
+            />
+          </Tooltip>
+          <Tooltip title="无帮助">
+            <Button
+              type="text"
+              size="small"
+              className={`chat-msg-action-btn${msg.feedback === "down" ? " chat-msg-action-btn--active" : ""}`}
+              icon={<DislikeOutlined />}
+              onClick={() =>
+                onFeedback?.(msg.id, msg.feedback === "down" ? null : "down")
+              }
+              aria-label="点踩"
+            />
+          </Tooltip>
+        </>
+      )}
       {canCopy && (
         <Tooltip title="复制">
           <Button
@@ -205,6 +254,7 @@ function ChatMessageItem({
                     content={msg.content}
                     streaming={isStreamingMsg}
                     forceParse={!isStreamingMsg}
+                    prefixBlocks={citationPrefixBlocks}
                   />
                 </div>
               )}
@@ -224,10 +274,13 @@ export default memo(ChatMessageItem, (prev, next) => {
     prev.msg.fromCache === next.msg.fromCache &&
     JSON.stringify(prev.msg.toolCalls) === JSON.stringify(next.msg.toolCalls) &&
     JSON.stringify(prev.msg.agentSteps) === JSON.stringify(next.msg.agentSteps) &&
+    JSON.stringify(prev.msg.citations) === JSON.stringify(next.msg.citations) &&
+    prev.msg.feedback === next.msg.feedback &&
     prev.isLast === next.isLast &&
     prev.isStreaming === next.isStreaming &&
     prev.userAvatarText === next.userAvatarText &&
     prev.onCopy === next.onCopy &&
-    prev.onRegenerate === next.onRegenerate
+    prev.onRegenerate === next.onRegenerate &&
+    prev.onFeedback === next.onFeedback
   );
 });

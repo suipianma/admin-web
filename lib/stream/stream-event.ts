@@ -50,6 +50,22 @@ export type StreamEvent =
       conversationId: number;
     }
   | {
+      type: "rag_citations";
+      conversationId: number;
+      assistantId: number;
+      citations: Array<{
+        chunkId: number;
+        documentName: string;
+        page?: number | null;
+        snippet: string;
+        score: number;
+      }>;
+    }
+  | {
+      type: "stream_cancelled";
+      conversationId: number;
+    }
+  | {
       type: "stream_error";
       conversationId: number;
       error: ApiError;

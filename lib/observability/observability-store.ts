@@ -51,8 +51,16 @@ export interface ObservabilitySnapshot {
 
 const MAX_RUNS = 50;
 const MAX_EVENTS = 200;
+const STORAGE_KEY = "chat-observability-v1";
+const PERSIST_DEBOUNCE_MS = 500;
 
 type StoreListener = () => void;
+
+interface PersistedObservability {
+  runs: StreamRunTrace[];
+  runOrder: string[];
+  recentEvents: StreamEvent[];
+}
 
 function emptyTotals(): ObservabilityTotals {
   return {
@@ -116,6 +124,11 @@ class ObservabilityStore {
   private pendingByAssistant = new Map<string, string>();
   private recentEvents: StreamEvent[] = [];
   private listeners = new Set<StoreListener>();
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor() {
+    this.hydrateFromSession();
+  }
 
   subscribe(listener: StoreListener): () => void {
     this.listeners.add(listener);
@@ -143,7 +156,13 @@ class ObservabilityStore {
     this.runOrder = [];
     this.pendingByAssistant.clear();
     this.recentEvents = [];
+    this.persistNow();
     this.notify();
+  }
+
+  /** 导出当前快照为 JSON 字符串 */
+  exportJson(): string {
+    return JSON.stringify(this.getSnapshot(), null, 2);
   }
 
   ingest(event: StreamEvent): void {
@@ -208,6 +227,9 @@ class ObservabilityStore {
         break;
       case "stream_done":
         this.finalizeRun(event.conversationId, "completed");
+        break;
+      case "stream_cancelled":
+        this.finalizeRun(event.conversationId, "cancelled");
         break;
       case "stream_error":
         this.finalizeRun(
@@ -329,6 +351,53 @@ class ObservabilityStore {
   private notify(): void {
     for (const listener of this.listeners) {
       listener();
+    }
+    this.schedulePersist();
+  }
+
+  private hydrateFromSession(): void {
+    if (typeof sessionStorage === "undefined") return;
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw) as PersistedObservability;
+      this.runOrder = Array.isArray(data.runOrder) ? data.runOrder : [];
+      this.recentEvents = Array.isArray(data.recentEvents)
+        ? data.recentEvents.slice(-MAX_EVENTS)
+        : [];
+      if (Array.isArray(data.runs)) {
+        for (const run of data.runs) {
+          if (run?.streamId) this.runs.set(run.streamId, run);
+        }
+      }
+    } catch {
+      // 损坏的缓存忽略
+    }
+  }
+
+  private schedulePersist(): void {
+    if (typeof sessionStorage === "undefined") return;
+    if (this.persistTimer) clearTimeout(this.persistTimer);
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      this.persistNow();
+    }, PERSIST_DEBOUNCE_MS);
+  }
+
+  private persistNow(): void {
+    if (typeof sessionStorage === "undefined") return;
+    try {
+      const runs = this.runOrder
+        .map((id) => this.runs.get(id))
+        .filter((r): r is StreamRunTrace => !!r);
+      const payload: PersistedObservability = {
+        runs,
+        runOrder: [...this.runOrder],
+        recentEvents: [...this.recentEvents],
+      };
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      // quota 超限等忽略
     }
   }
 }

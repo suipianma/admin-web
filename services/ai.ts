@@ -18,7 +18,7 @@ export function streamChat(
   content: string | undefined,
   options: StreamChatOptions
 ): () => void {
-  const { onUpdate, onDone, onError, onToolCall, onToolResult, onAgentStep, onStreamMeta, onStreamInterrupted, ...rest } =
+  const { onUpdate, onDone, onError, onToolCall, onToolResult, onAgentStep, onStreamMeta, onStreamInterrupted, onRagCitations, ...rest } =
     options;
 
   return aiClient.streamChat({
@@ -34,6 +34,7 @@ export function streamChat(
       onAgentStep,
       onStreamMeta,
       onStreamInterrupted,
+      onRagCitations,
     },
   });
 }

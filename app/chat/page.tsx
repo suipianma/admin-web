@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { App, Avatar, Button, Drawer, Spin } from "antd";
 import {
   CodeOutlined,
+  DownloadOutlined,
   MenuOutlined,
   MessageOutlined,
   RobotOutlined,
@@ -36,6 +37,9 @@ import {
   deleteConversation,
   getActiveStreamSession,
   getConversations,
+  exportConversation,
+  setConversationPinned,
+  setMessageFeedback,
   resumeStreamChat,
   updateConversation,
   type Conversation,
@@ -48,6 +52,11 @@ import {
 } from "@/utils/streamSessionStorage";
 import { useChatStreamBus } from "@/hooks/useChatStreamBus";
 import type { StreamMeta } from "@/lib/stream";
+import { observabilityStore } from "@/lib/observability";
+import { useChatComposer } from "@/hooks/useChatComposer";
+import ModelSelector from "@/components/chat/ModelSelector";
+import { getKnowledgeBases, type KnowledgeBase } from "@/services/knowledge-base";
+import KnowledgeBasePicker from "@/components/chat/KnowledgeBasePicker";
 
 const SUGGESTIONS = [
   { text: "你好，介绍一下自己", icon: <MessageOutlined /> },
@@ -78,7 +87,16 @@ export default function ChatPage() {
   >(null);
   const [convLoading, setConvLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [input, setInput] = useState("");
+  const {
+    input,
+    setInput,
+    selectedModel,
+    setSelectedModel,
+    inputRef,
+    handleInput,
+    clearInput,
+    resetInputHeight,
+  } = useChatComposer();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [obsPanelOpen, setObsPanelOpen] = useState(false);
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplateItem[]>(
@@ -86,8 +104,12 @@ export default function ChatPage() {
   );
   const [selectedPrompt, setSelectedPrompt] =
     useState<PromptTemplateItem | null>(null);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<
+    number[]
+  >([]);
+  const [convSearch, setConvSearch] = useState("");
 
-  const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamStopsRef = useRef<Map<number, () => void>>(new Map());
   const streamIdsRef = useRef<Map<number, string>>(new Map());
   const streamMetaRef = useRef<Map<number, StreamMeta>>(new Map());
@@ -128,9 +150,10 @@ export default function ChatPage() {
   } = useChatMessages();
 
   const refreshConversations = useCallback(
-    async (keepActiveId?: number) => {
+    async (keepActiveId?: number, search?: string) => {
       try {
-        const res = await getConversations();
+        const q = (search ?? convSearch).trim();
+        const res = await getConversations(q ? { q } : undefined);
         setConversations(res.data);
         if (keepActiveId != null) setActiveConversationId(keepActiveId);
       } catch (err) {
@@ -139,7 +162,7 @@ export default function ChatPage() {
         );
       }
     },
-    [message]
+    [message, convSearch]
   );
 
   const handleStreamFlush = useCallback(
@@ -228,6 +251,8 @@ export default function ChatPage() {
     const convId = activeConversationId;
     if (convId == null || !streamingConversationIds.has(convId)) return;
 
+    observabilityStore.ingest({ type: "stream_cancelled", conversationId: convId });
+
     const streamId = streamIdsRef.current.get(convId);
     const meta = streamMetaRef.current.get(convId);
     const userContent =
@@ -279,6 +304,7 @@ export default function ChatPage() {
     streamIdsRef,
     streamStopsRef,
     pushStream,
+    updateMessage,
     mutateDraftMessages,
     appendToolCall,
     completeToolCall,
@@ -303,7 +329,9 @@ export default function ChatPage() {
       options?: {
         resumeStreamId?: string;
         promptId?: string;
+        knowledgeBaseIds?: number[];
         regenerate?: boolean;
+        model?: string;
         rollbackUserMsgId?: number;
         rollbackAssistantId?: number;
       }
@@ -326,7 +354,9 @@ export default function ChatPage() {
         ? resumeStreamChat(conversationId, options.resumeStreamId, handlers)
         : streamChat(conversationId, content, {
             promptId: options?.promptId,
+            knowledgeBaseIds: options?.knowledgeBaseIds,
             regenerate: options?.regenerate,
+            model: options?.model,
             ...handlers,
           });
 
@@ -444,8 +474,22 @@ export default function ChatPage() {
   }, [loadInitial, message, resetMessages, tryRecoverActiveStream]);
 
   useEffect(() => {
+    if (!initDoneRef.current) return;
+    const timer = window.setTimeout(() => {
+      void refreshConversations(activeConversationId ?? undefined);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [convSearch, activeConversationId, refreshConversations]);
+
+  useEffect(() => {
     getPromptTemplates()
       .then((res) => setPromptTemplates(res.data))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    getKnowledgeBases()
+      .then((res) => setKnowledgeBases(res.data))
       .catch(() => {});
   }, []);
 
@@ -614,8 +658,7 @@ export default function ChatPage() {
   ) {
     const isRegenerate = options?.regenerate === true;
 
-    setInput("");
-    if (inputRef.current) inputRef.current.style.height = "auto";
+    clearInput();
 
     let userMsgId: number | undefined;
     let rollbackUserMsgId: number | undefined;
@@ -641,7 +684,12 @@ export default function ChatPage() {
 
     startStreamClient(conversationId, content, meta, {
       promptId,
+      knowledgeBaseIds:
+        selectedKnowledgeBaseIds.length > 0
+          ? selectedKnowledgeBaseIds
+          : undefined,
       regenerate: isRegenerate,
+      model: selectedModel,
       rollbackUserMsgId,
       rollbackAssistantId: assistantId,
     });
@@ -669,8 +717,7 @@ export default function ChatPage() {
       const userMsg = messages[messages.length - 2];
       if (!userMsg || userMsg.role !== "user") return;
 
-      setInput("");
-      if (inputRef.current) inputRef.current.style.height = "auto";
+      clearInput();
 
       if (content !== userMsg.content) {
         updateMessage(userMsg.id, { content });
@@ -690,6 +737,48 @@ export default function ChatPage() {
       () => message.success("已复制"),
       () => message.error("复制失败")
     );
+  }
+
+  async function handlePinConversation(id: number, pinned: boolean) {
+    try {
+      await setConversationPinned(id, pinned);
+      await refreshConversations(activeConversationId ?? undefined);
+      message.success(pinned ? "已置顶" : "已取消置顶");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "置顶操作失败");
+    }
+  }
+
+  async function handleExportConversation() {
+    if (activeConversationId == null) return;
+    try {
+      const res = await exportConversation(activeConversationId);
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `conversation-${activeConversationId}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      message.success("会话已导出");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "导出失败");
+    }
+  }
+
+  async function handleMessageFeedback(
+    msgId: number,
+    feedback: "up" | "down" | null
+  ) {
+    if (activeConversationId == null) return;
+    try {
+      await setMessageFeedback(activeConversationId, msgId, feedback);
+      updateMessage(msgId, { feedback: feedback ?? undefined });
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "反馈提交失败");
+    }
   }
 
   function handleRegenerateMessage(msgId: number) {
@@ -743,12 +832,6 @@ export default function ChatPage() {
     }
   }
 
-  function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    setInput(e.target.value);
-    e.target.style.height = "auto";
-    e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
-  }
-
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -770,6 +853,9 @@ export default function ChatPage() {
     onRename: handleRenameConversation,
     onDelete: handleDeleteConversation,
     onDeleteAll: handleDeleteAllConversations,
+    onPin: handlePinConversation,
+    searchQuery: convSearch,
+    onSearchChange: setConvSearch,
   };
 
   const activeTitle =
@@ -860,6 +946,15 @@ export default function ChatPage() {
                 isFullscreen={isFullscreen}
                 onToggle={toggleFullscreen}
               />
+              {activeConversationId != null && messages.length > 0 && (
+                <Button
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  onClick={() => void handleExportConversation()}
+                >
+                  导出
+                </Button>
+              )}
               <Button
                 size="small"
                 type="text"
@@ -873,6 +968,7 @@ export default function ChatPage() {
 
           <ChatObservabilityPanel
             open={obsPanelOpen}
+            conversationId={activeConversationId}
             onClose={() => setObsPanelOpen(false)}
           />
 
@@ -943,6 +1039,7 @@ export default function ChatPage() {
                   userAvatarText={userAvatarText}
                   onCopy={handleCopyMessage}
                   onRegenerate={handleRegenerateMessage}
+                  onFeedback={handleMessageFeedback}
                   onLoadOlder={() => {
                     if (activeConversationId) {
                       void loadOlder(activeConversationId);
@@ -954,10 +1051,22 @@ export default function ChatPage() {
 
             <div className="chat-footer">
               <div className="chat-composer-wrap">
+                <KnowledgeBasePicker
+                  compact
+                  options={knowledgeBases}
+                  value={selectedKnowledgeBaseIds}
+                  disabled={isActiveConvStreaming || activeConversationId == null}
+                  onChange={setSelectedKnowledgeBaseIds}
+                />
                 <PromptTemplateChip
                   selected={selectedPrompt}
                   disabled={isActiveConvStreaming || activeConversationId == null}
                   onClear={() => setSelectedPrompt(null)}
+                />
+                <ModelSelector
+                  value={selectedModel}
+                  disabled={isActiveConvStreaming || activeConversationId == null}
+                  onChange={setSelectedModel}
                 />
                 <div className="chat-composer">
                   <PromptTemplateMenu

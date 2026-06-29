@@ -2,6 +2,7 @@ import { AI_STREAM_TIMEOUT_MS, API_BASE } from "@/config/api";
 import { getToken } from "@/utils/auth";
 import { ApiError } from "@/utils/apiError";
 import { playCacheTypewriter } from "@/utils/cacheTypewriter";
+import { parseStreamFrame } from "./stream-frame";
 import type { StreamHandlers } from "./types";
 
 export interface StreamAdapterOptions {
@@ -72,6 +73,7 @@ export function createStreamAdapter({
     onAgentStep,
     onStreamMeta,
     onStreamInterrupted,
+    onRagCitations,
   } = handlers;
 
   const finishStream = () => {
@@ -99,105 +101,95 @@ export function createStreamAdapter({
   es.onmessage = (event) => {
     try {
       hasReceivedData = true;
-      let parsed = JSON.parse(event.data) as {
-        thinking?: string;
-        response?: string;
-        thinkingDelta?: string;
-        contentDelta?: string;
-        error?: string;
-        done?: boolean;
-        fromCache?: boolean;
-        promptTokens?: number;
-        completionTokens?: number;
-        phase?:
-          | "tool_call"
-          | "tool_result"
-          | "agent_start"
-          | "agent_step"
-          | "agent_done";
-        tool?: string;
-        args?: Record<string, string>;
-        result?: string;
-        step?: number;
-        maxSteps?: number;
-        steps?: number;
-        streamId?: string;
-        requestId?: string;
-        toolCallId?: string;
-        seq?: number;
-        data?: Record<string, unknown>;
-      };
+      let parsed = JSON.parse(event.data) as Record<string, unknown>;
 
-      if (parsed.data && typeof parsed.data === "object") {
-        parsed = parsed.data as typeof parsed;
+      if (
+        parsed.v !== 2 &&
+        parsed.data &&
+        typeof parsed.data === "object"
+      ) {
+        parsed = parsed.data as Record<string, unknown>;
       }
 
-      if (parsed.streamId) {
-        streamId = parsed.streamId;
+      const frame = parseStreamFrame(parsed);
+
+      if (frame.streamId) {
+        streamId = frame.streamId;
         onStreamMeta?.({
-          streamId: parsed.streamId,
-          seq: parsed.seq,
-          requestId: parsed.requestId,
+          streamId: frame.streamId,
+          seq: frame.seq,
+          requestId: frame.requestId,
+        });
+      } else if (frame.requestId) {
+        onStreamMeta?.({
+          streamId: streamId ?? "",
+          requestId: frame.requestId,
+          seq: frame.seq,
         });
       }
 
-      if (parsed.error) {
+      if (frame.error) {
         finished = true;
         window.clearTimeout(timeoutTimer);
         es.close();
-        onError(new ApiError(parsed.error));
+        onError(new ApiError(frame.error));
+        return;
+      }
+
+      if (frame.phase === "rag_citations" && frame.citations?.length) {
+        onRagCitations?.(frame.citations);
         return;
       }
 
       if (
-        parsed.phase === "agent_start" ||
-        parsed.phase === "agent_step" ||
-        parsed.phase === "agent_done"
+        frame.phase === "agent_start" ||
+        frame.phase === "agent_step" ||
+        frame.phase === "agent_done"
       ) {
         onAgentStep?.({
-          phase: parsed.phase,
-          step: parsed.step,
-          maxSteps: parsed.maxSteps,
-          steps: parsed.steps,
+          phase: frame.phase,
+          step: frame.step,
+          maxSteps: frame.maxSteps,
+          steps: frame.steps,
         });
         return;
       }
 
-      if (parsed.phase === "tool_call" && parsed.tool && parsed.args) {
+      if (frame.phase === "tool_call" && frame.tool && frame.args) {
         onToolCall?.({
-          tool: parsed.tool,
-          args: parsed.args,
-          step: parsed.step,
-          toolCallId: parsed.toolCallId,
+          tool: frame.tool,
+          args: frame.args,
+          step: frame.step,
+          toolCallId: frame.toolCallId,
         });
         return;
       }
 
-      if (parsed.phase === "tool_result" && parsed.tool && parsed.result) {
+      if (frame.phase === "tool_result" && frame.tool && frame.result) {
         onToolResult?.({
-          tool: parsed.tool,
-          result: parsed.result,
-          error: parsed.error,
-          step: parsed.step,
-          toolCallId: parsed.toolCallId,
+          tool: frame.tool,
+          result: frame.result,
+          error: frame.error,
+          step: frame.step,
+          toolCallId: frame.toolCallId,
         });
         return;
       }
 
-      if (parsed.thinkingDelta) accThinking += parsed.thinkingDelta;
-      if (parsed.contentDelta) accResponse += parsed.contentDelta;
-      if (parsed.thinking !== undefined) accThinking = parsed.thinking;
-      if (parsed.response !== undefined) accResponse = parsed.response;
+      if (frame.thinkingDelta) accThinking += frame.thinkingDelta;
+      if (frame.contentDelta) accResponse += frame.contentDelta;
+      if (frame.thinking !== undefined) accThinking = frame.thinking;
+      if (frame.response !== undefined) accResponse = frame.response;
 
       const reply = normalizeReply({
         thinking: accThinking,
         response: accResponse,
-        fromCache: parsed.fromCache,
-        promptTokens: parsed.promptTokens,
-        completionTokens: parsed.completionTokens,
+        fromCache: frame.fromCache,
+        promptTokens: frame.promptTokens,
+        completionTokens: frame.completionTokens,
       });
 
-      if (parsed.done && reply.fromCache) {
+      if (frame.done && reply.fromCache) {
         finished = true;
         completed = true;
         window.clearTimeout(timeoutTimer);
@@ -208,7 +200,7 @@ export function createStreamAdapter({
 
       onUpdate(reply);
 
-      if (parsed.done) {
+      if (frame.done) {
         finishStream();
       }
     } catch {
@@ -277,6 +269,7 @@ export function buildStreamUrl(
     knowledgeBaseIds?: number[];
     regenerate?: boolean;
     model?: string;
+    streamTicket?: string;
   }
 ): string {
   const token = getToken();
@@ -294,7 +287,11 @@ export function buildStreamUrl(
   }
   if (request.regenerate) params.set("regenerate", "1");
   if (request.model) params.set("model", request.model);
-  if (token) params.set("token", token);
+  if (request.streamTicket) {
+    params.set("ticket", request.streamTicket);
+  } else if (token) {
+    params.set("token", token);
+  }
 
   return `${baseUrl}/conversations/${request.conversationId}/stream?${params.toString()}`;
 }

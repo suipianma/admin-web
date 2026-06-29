@@ -7,6 +7,7 @@ export interface Conversation {
   title: string;
   summary: string | null;
   summarizedMessageId: number | null;
+  pinnedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -19,11 +20,17 @@ export interface ConversationMessage {
   thinking: string | null;
   fromCache: boolean;
   createdAt: string;
+  metadata?: {
+    toolCalls?: import("@/components/chat/ChatMessageItem").ToolCallItem[];
+    agentSteps?: import("@/components/chat/ChatMessageItem").AgentStepItem[];
+    citations?: import("@/components/chat/ChatMessageItem").ChatMessage["citations"];
+    feedback?: "up" | "down";
+  } | null;
 }
 
-/** 获取当前用户会话列表（按 updatedAt 降序） */
-export function getConversations() {
-  return request.get<Conversation[]>("/conversations");
+/** 获取当前用户会话列表（置顶优先，支持 q 搜索） */
+export function getConversations(params?: { q?: string }) {
+  return request.get<Conversation[]>("/conversations", { params });
 }
 
 /** 新建空会话 */
@@ -69,6 +76,34 @@ export interface ActiveStreamSession {
   done: boolean;
 }
 
+/** 置顶/取消置顶会话 */
+export function setConversationPinned(id: number, pinned: boolean) {
+  return request.patch<Conversation>(`/conversations/${id}/pin`, { pinned });
+}
+
+/** 导出会话 JSON */
+export function exportConversation(id: number) {
+  return request.get<Record<string, unknown>>(`/conversations/${id}/export`);
+}
+
+/** 设置助手消息反馈 */
+export function setMessageFeedback(
+  conversationId: number,
+  messageId: number,
+  feedback: "up" | "down" | null
+) {
+  return request.patch(`/conversations/${conversationId}/messages/${messageId}/feedback`, {
+    feedback,
+  });
+}
+
+/** 申请 SSE 一次性 stream ticket */
+export function createStreamTicket(conversationId: number) {
+  return request.post<{ ticket: string; expiresIn: number }>(
+    `/conversations/${conversationId}/stream/ticket`
+  );
+}
+
 /** 分页获取会话历史消息 */
 export function getConversationMessages(
   conversationId: number,
@@ -104,5 +139,33 @@ export function cancelStreamSession(conversationId: number, streamId: string) {
   return request.delete<{ ok: boolean }>(
     `/conversations/${conversationId}/stream`,
     { params: { streamId } }
+  );
+}
+
+export interface ContextTraceResponse {
+  requestId: string;
+  traceId: string;
+  conversationId: number;
+  model: string;
+  budget: {
+    maxTokens: number;
+    usedTokens: number;
+    availableForContext: number;
+  };
+  selectedBlocks: Array<{ category: string; tokenCount: number }>;
+  droppedBlocks: Array<{ category: string; tokenCount: number }>;
+  trace: Array<{
+    traceId: string;
+    droppedCategories: string[];
+    categoryTokenUsage: Record<string, number>;
+  }>;
+  stageTimings?: Record<string, number>;
+  savedAt: number;
+}
+
+/** 获取单次请求的 Context Engine Trace */
+export function getContextTrace(conversationId: number, requestId: string) {
+  return request.get<ContextTraceResponse>(
+    `/conversations/${conversationId}/traces/${requestId}`
   );
 }

@@ -128,6 +128,18 @@ body {
   min-width: 0;
 }
 
+.page-header-back {
+  display: inline-block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+
+.page-header-back:hover {
+  color: var(--color-primary);
+}
+
 .page-title {
   margin: 0;
   font-size: 20px;
@@ -721,6 +733,10 @@ body {
   width: 100vw;
   height: 100vh;
   background: var(--color-bg-page);
+}
+
+.chat-page--fullscreen .chat-sidebar {
+  display: none;
 }
 
 .chat-page--fullscreen .chat-layout {
@@ -2439,6 +2455,54 @@ body {
 .chat-composer-wrap {
   max-width: 800px;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-kb-picker--compact .ant-select {
+  font-size: 12px;
+}
+
+.chat-model-picker--compact {
+  margin-bottom: 6px;
+}
+
+.chat-model-picker--compact .ant-select {
+  font-size: 12px;
+}
+
+.obs-panel-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.obs-trace-blocks {
+  margin-top: 10px;
+}
+
+.obs-trace-block-list {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.obs-trace-block-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.conv-search-input {
+  margin-top: 8px;
+}
+
+.chat-msg-action-btn--active {
+  color: var(--color-primary) !important;
 }
 
 .chat-composer {
