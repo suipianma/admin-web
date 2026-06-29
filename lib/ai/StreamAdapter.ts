@@ -1,5 +1,4 @@
 import { AI_STREAM_TIMEOUT_MS, API_BASE } from "@/config/api";
-import { getToken } from "@/utils/auth";
 import { ApiError } from "@/utils/apiError";
 import { playCacheTypewriter } from "@/utils/cacheTypewriter";
 import { parseStreamFrame } from "./stream-frame";
@@ -269,10 +268,9 @@ export function buildStreamUrl(
     knowledgeBaseIds?: number[];
     regenerate?: boolean;
     model?: string;
-    streamTicket?: string;
+    streamTicket: string;
   }
 ): string {
-  const token = getToken();
   const params = new URLSearchParams();
 
   if (request.resumeStreamId) {
@@ -287,11 +285,12 @@ export function buildStreamUrl(
   }
   if (request.regenerate) params.set("regenerate", "1");
   if (request.model) params.set("model", request.model);
-  if (request.streamTicket) {
-    params.set("ticket", request.streamTicket);
-  } else if (token) {
-    params.set("token", token);
+
+  const ticket = request.streamTicket?.trim();
+  if (!ticket) {
+    throw new ApiError("缺少流式 ticket，请重新登录后重试", { status: 401 });
   }
+  params.set("ticket", ticket);
 
   return `${baseUrl}/conversations/${request.conversationId}/stream?${params.toString()}`;
 }
